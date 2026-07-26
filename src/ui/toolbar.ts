@@ -2,7 +2,7 @@
 //  🏠 房间改造工具 — 工具栏事件绑定
 // ============================================================
 
-import { state, pushUndo, popUndo, popRedo, clearSelection } from '../state/store';
+import { state, pushUndo, popUndo, popRedo, clearSelection, saveToStorage } from '../state/store';
 import { EditorMode } from '../engine/types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../engine/constants';
 import { createRoomFromDimensions } from '../engine/walls';
@@ -50,6 +50,7 @@ export function bindToolbarEvents(callbacks: ToolbarCallbacks): void {
       state.showGrid = !state.showGrid;
       callbacks.onDrawGrid();
       this.textContent = state.showGrid ? '▣ 网格' : '▣ 网格隐藏';
+      saveToStorage();
     });
   }
 
@@ -96,6 +97,7 @@ export function bindToolbarEvents(callbacks: ToolbarCallbacks): void {
       state.redoStack = [];
       callbacks.onRebuildWalls();
       callbacks.onUpdateUndoRedo();
+      saveToStorage();
 
       log('一键创建房间', { width: w + 'cm', height: h + 'cm' });
       setStatus(`✅ 已创建 ${w}cm × ${h}cm 房间 — 点击墙段选中编辑，或切换到「放家具」模式`, 'success');
@@ -113,6 +115,7 @@ export function bindToolbarEvents(callbacks: ToolbarCallbacks): void {
       this.textContent = door.swingInward ? '向内开' : '向外开';
       // Trigger re-render via custom event
       document.dispatchEvent(new CustomEvent('door-changed'));
+      saveToStorage();
     });
   }
 }

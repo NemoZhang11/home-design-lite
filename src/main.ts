@@ -5,7 +5,7 @@
 // ============================================================
 
 import Konva from 'konva';
-import { state, pushUndo, clearSelection } from './state/store';
+import { state, pushUndo, clearSelection, saveToStorage, loadFromStorage, clearStorage } from './state/store';
 import type { EditorMode, WallSegment, Point } from './engine/types';
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT, WALL_COLOR, WALL_SELECTED_COLOR,
@@ -95,6 +95,28 @@ const ROOM_TEMPLATES: Record<string, RoomTemplate> = {
     ],
   },
 };
+
+// ============================================================
+//  localStorage 自动保存 (防抖)
+// ============================================================
+
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function triggerSave(): void {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    saveToStorage();
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+      statusText.textContent = '💾 已自动保存';
+      setTimeout(() => {
+        const text = document.getElementById('status-text');
+        if (text && text.textContent === '💾 已自动保存') {
+          // Flash indicator — will be overwritten by next user action
+        }
+      }, 1200);
+    }
+  }, 500);
+}
 
 // ============================================================
 //  Konva 初始化
@@ -261,6 +283,7 @@ function renderSingleWallSegment(seg: WallSegment): void {
     rebuildWallSegmentsFull();
     pushUndo();
     updateUndoRedoButtons();
+    triggerSave();
   });
 
   // ---- 右键删除墙段 ----
@@ -280,6 +303,7 @@ function renderSingleWallSegment(seg: WallSegment): void {
     }
     rebuildWallSegmentsFull();
     updateUndoRedoButtons();
+    triggerSave();
   });
 }
 
@@ -313,6 +337,7 @@ function selectWallSegment(seg: WallSegment): void {
       if (newSeg) selectWallSegment(newSeg);
       pushUndo();
       updateUndoRedoButtons();
+      triggerSave();
     },
     // onResizeP2
     (x: number, y: number) => {
@@ -334,6 +359,7 @@ function selectWallSegment(seg: WallSegment): void {
       if (newSeg) selectWallSegment(newSeg);
       pushUndo();
       updateUndoRedoButtons();
+      triggerSave();
     },
     // onRotate
     (newAngle: number) => {
@@ -366,6 +392,7 @@ function selectWallSegment(seg: WallSegment): void {
       if (newSeg) selectWallSegment(newSeg);
       pushUndo();
       updateUndoRedoButtons();
+      triggerSave();
     },
     // onLengthChange
     (newLen: number) => {
@@ -377,6 +404,7 @@ function selectWallSegment(seg: WallSegment): void {
       if (newSeg) selectWallSegment(newSeg);
       pushUndo();
       updateUndoRedoButtons();
+      triggerSave();
     }
   );
 
@@ -479,6 +507,7 @@ function createDoorFull(wallIdx: number, t: number, width: number, swingInward: 
   state._rebuildingDoorsWindows = true;
   rebuildWallSegmentsFull();
   state._rebuildingDoorsWindows = false;
+  triggerSave();
 }
 
 /** 创建窗户 (Konva) */
@@ -526,6 +555,7 @@ function createWindowFull(wallIdx: number, t: number, width: number): void {
   state._rebuildingDoorsWindows = true;
   rebuildWallSegmentsFull();
   state._rebuildingDoorsWindows = false;
+  triggerSave();
 }
 
 /** 选中门 */
@@ -669,6 +699,7 @@ function removeFurniture(group: Konva.Group): void {
   group.destroy();
   furnitureLayer.batchDraw();
   log('移除家具');
+  triggerSave();
 }
 
 /** 放置家具 */
@@ -678,6 +709,7 @@ function placeFurnitureFull(type: string, x: number, y: number, rotation?: numbe
   state.furnitureItems.push({ type, x: group.x(), y: group.y(), rotation: rotation || 0 });
   furnitureLayer.batchDraw();
   log('放置家具', { type, x, y });
+  triggerSave();
 }
 
 // ============================================================
@@ -721,6 +753,7 @@ function runSmartLayoutFull(): void {
 
   log('智能布局完成', { items: state.furnitureItems.length });
   setStatus('✨ 智能布局完成！家具已沿墙排列', 'success');
+  triggerSave();
 }
 
 // ============================================================
@@ -757,6 +790,7 @@ function clearAllFull(): void {
   wallLayer.batchDraw();
   furnitureLayer.batchDraw();
   updateUndoRedoButtons();
+  clearStorage();
   setStatus('已清除全部 — 点击画布开始绘制墙线', 'idle');
 }
 
@@ -796,6 +830,7 @@ function setMode(mode: EditorMode): void {
   furnitureLayer.find('Group').forEach(g => {
     g.draggable(mode === 'place');
   });
+  triggerSave();
 }
 
 // ============================================================
@@ -819,6 +854,7 @@ function addWallPoint(x: number, y: number): void {
       rebuildWallSegmentsFull();
       log('房间已闭合', { walls: state.wallSegments.length });
       setStatus('✅ 房间已闭合！切换到「放家具」模式添加家具', 'success');
+      triggerSave();
       return;
     }
   }
@@ -828,6 +864,7 @@ function addWallPoint(x: number, y: number): void {
   log('添加墙点', { x: sx, y: sy, total: state.wallPoints.length });
   rebuildWallSegmentsFull();
   updateUndoRedoButtons();
+  triggerSave();
 }
 
 // ============================================================
@@ -949,6 +986,7 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
           state.doors = state.doors.filter(d => d.id !== door.id);
           clearSelectionFull();
           rebuildDoorsAndWindowsFull();
+          triggerSave();
           return;
         }
       }
@@ -958,6 +996,7 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
           state.windows = state.windows.filter(w => w.id !== win.id);
           clearSelectionFull();
           rebuildDoorsAndWindowsFull();
+          triggerSave();
           return;
         }
       }
@@ -1014,6 +1053,7 @@ stage.on('wheel', function(e: Konva.KonvaEventObject<WheelEvent>) {
 document.addEventListener('wall-changed', function() {
   rebuildWallSegmentsFull();
   updateUndoRedoButtons();
+  triggerSave();
 });
 
 // ---- 监听 door-changed 事件 (用于门方向切换) ----
@@ -1022,6 +1062,7 @@ document.addEventListener('door-changed', function() {
   if (id === null || state.selectedElementType !== 'door') return;
   rebuildDoorsAndWindowsFull();
   selectDoor(id);
+  triggerSave();
 });
 
 // ============================================================
@@ -1055,6 +1096,7 @@ document.getElementById('btn-door-hinge')!.addEventListener('click', function() 
   this.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
   rebuildDoorsAndWindowsFull();
   selectDoor(id);
+  triggerSave();
 });
 
 document.getElementById('door-width-input')!.addEventListener('change', function() {
@@ -1070,6 +1112,7 @@ document.getElementById('door-width-input')!.addEventListener('change', function
   door.width = val;
   rebuildDoorsAndWindowsFull();
   selectDoor(id);
+  triggerSave();
 });
 
 // ============================================================
@@ -1077,36 +1120,91 @@ document.getElementById('door-width-input')!.addEventListener('change', function
 // ============================================================
 
 drawGrid(gridLayer, state.showGrid);
-setMode('draw');
 updateUndoRedoButtons();
 
-// 添加示例墙 (400x300 房间)
-const demoWalls = [
-  { x: 200, y: 150 },
-  { x: 600, y: 150 },
-  { x: 600, y: 450 },
-  { x: 200, y: 450 },
-];
-for (const p of demoWalls) {
-  state.wallPoints.push({ x: p.x, y: p.y });
+// 尝试从 localStorage 恢复状态
+const saved = loadFromStorage();
+if (saved) {
+  // 恢复状态
+  state.wallPoints = saved.wallPoints;
+  state.isClosed = saved.isClosed;
+  state.doors = saved.doors;
+  state.windows = saved.windows;
+  state.furnitureItems = saved.furnitureItems;
+  state.mode = saved.mode;
+  state.showGrid = saved.showGrid;
+  state.nextWallId = saved.nextWallId;
+  state.nextDoorId = saved.nextDoorId;
+  state.nextWindowId = saved.nextWindowId;
+
+  // 重建墙段
+  rebuildWallSegmentsFull();
+
+  // 重新渲染家具 (state.furnitureItems 已恢复，只需创建 Konva 图形)
+  for (const item of saved.furnitureItems) {
+    renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+  }
+  furnitureLayer.batchDraw();
+
+  // 恢复网格
+  drawGrid(gridLayer, state.showGrid);
+
+  // 恢复模式 UI
+  state.mode = saved.mode;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', (btn as HTMLElement).dataset.mode === saved.mode);
+  });
+  const catalog = document.getElementById('furniture-catalog')!;
+  catalog.classList.toggle('visible', saved.mode === 'place');
+  const layoutBtn = document.getElementById('btn-layout')!;
+  layoutBtn.style.display = saved.mode === 'layout' ? 'block' : 'none';
+  const containerEl = stage.container();
+  if (saved.mode === 'draw') {
+    containerEl.style.cursor = 'crosshair';
+  } else if (saved.mode === 'place') {
+    containerEl.style.cursor = 'default';
+  } else {
+    containerEl.style.cursor = 'default';
+  }
+  // Update furniture draggability
+  furnitureLayer.find('Group').forEach(g => {
+    g.draggable(saved.mode === 'place');
+  });
+
+  setStatus('📂 已恢复上次保存的房间', 'success');
+  log('已从 localStorage 恢复状态');
+} else {
+  // 首次访问 — 创建默认示例房间
+  setMode('draw');
+
+  // 添加示例墙 (400x300 房间)
+  const demoWalls = [
+    { x: 200, y: 150 },
+    { x: 600, y: 150 },
+    { x: 600, y: 450 },
+    { x: 200, y: 450 },
+  ];
+  for (const p of demoWalls) {
+    state.wallPoints.push({ x: p.x, y: p.y });
+  }
+  state.isClosed = true;
+  rebuildWallSegmentsFull();
+
+  // 添加示例门 (在底部墙上，t=0.3)
+  createDoorFull(3, 0.3, 80, true);
+
+  // 添加示例窗户 (在顶部墙上，t=0.5)
+  createWindowFull(0, 0.5, 100);
+
+  // 添加示例家具
+  placeFurnitureFull('bed', 240, 200);
+  placeFurnitureFull('desk', 480, 170);
+  placeFurnitureFull('wardrobe', 240, 420);
+  placeFurnitureFull('chair', 500, 260);
+  placeFurnitureFull('sofa', 420, 370);
+
+  setStatus('🏠 欢迎！已加载示例房间。试试切换模式或拖拽家具', 'idle');
 }
-state.isClosed = true;
-rebuildWallSegmentsFull();
-
-// 添加示例门 (在底部墙上，t=0.3)
-createDoorFull(3, 0.3, 80, true);
-
-// 添加示例窗户 (在顶部墙上，t=0.5)
-createWindowFull(0, 0.5, 100);
-
-// 添加示例家具
-placeFurnitureFull('bed', 240, 200);
-placeFurnitureFull('desk', 480, 170);
-placeFurnitureFull('wardrobe', 240, 420);
-placeFurnitureFull('chair', 500, 260);
-placeFurnitureFull('sofa', 420, 370);
-
-setStatus('🏠 欢迎！已加载示例房间。试试切换模式或拖拽家具', 'idle');
 
 // ---- AI 输入框 ----
 const aiInput = document.getElementById('ai-input') as HTMLInputElement;
@@ -1168,6 +1266,8 @@ document.querySelectorAll('.template-btn').forEach((btn) => {
     updateUndoRedoButtons();
     wallLayer.batchDraw();
     furnitureLayer.batchDraw();
+    clearStorage();
+    triggerSave();
     setStatus(`已加载模板：${tmpl.label} — 可自由编辑`, 'success');
   });
 });

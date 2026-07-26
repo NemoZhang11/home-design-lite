@@ -81,3 +81,65 @@ export function clearSelection(): void {
   state.selectedElementId = null;
   state.selectedElementType = null;
 }
+
+// ============================================================
+//  localStorage 自动保存/恢复
+// ============================================================
+
+export const STORAGE_KEY = 'home-design-tool-state';
+
+export interface SaveData {
+  wallPoints: Point[];
+  isClosed: boolean;
+  doors: Door[];
+  windows: Window[];
+  furnitureItems: FurnitureItem[];
+  mode: EditorMode;
+  showGrid: boolean;
+  nextWallId: number;
+  nextDoorId: number;
+  nextWindowId: number;
+}
+
+/** Save current state to localStorage */
+export function saveToStorage(): void {
+  try {
+    const data: SaveData = {
+      wallPoints: state.wallPoints,
+      isClosed: state.isClosed,
+      doors: state.doors,
+      windows: state.windows,
+      furnitureItems: state.furnitureItems,
+      mode: state.mode,
+      showGrid: state.showGrid,
+      nextWallId: state.nextWallId,
+      nextDoorId: state.nextDoorId,
+      nextWindowId: state.nextWindowId,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage full or unavailable — silently ignore
+  }
+}
+
+/** Load state from localStorage. Returns null if no saved data. */
+export function loadFromStorage(): SaveData | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SaveData;
+    if (!data.wallPoints || !Array.isArray(data.wallPoints)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear saved state */
+export function clearStorage(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
