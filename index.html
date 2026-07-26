@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🏠 房间改造工具</title>
   <link rel="icon" type="image/svg+xml" href="/home-design-lite/favicon.svg" />
-  <script type="module" crossorigin src="/home-design-lite/assets/index-C6DzOjZW.js"></script>
+  <script type="module" crossorigin src="/home-design-lite/assets/index-C6j6Q1Yw.js"></script>
   <link rel="stylesheet" crossorigin href="/home-design-lite/assets/index-hviCHzLV.css">
 </head>
 <body>
@@ -100,10 +100,18 @@
             </button>
           </div>
 
-          <!-- 门方向面板 -->
+          <!-- 门参数面板 -->
           <div id="door-panel" style="display:none; padding:8px; background:#f0ece6; border-radius:8px; margin-top:4px;">
-            <div style="font-size:12px; margin-bottom:4px; color:#7f8c8d;">开门方向</div>
-            <button class="action-btn" id="btn-door-dir" style="width:100%;">向内开 ▼</button>
+            <div style="font-size:12px; margin-bottom:6px; color:#7f8c8d; font-weight:600;">门参数</div>
+
+            <div style="font-size:11px; color:#7f8c8d; margin-bottom:2px;">宽度 (cm)</div>
+            <input type="number" id="door-width-input" min="40" max="200" step="5" value="80"
+              style="width:100%; padding:4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px; margin-bottom:6px;">
+
+            <div style="display:flex; gap:4px; margin-bottom:4px;">
+              <button class="action-btn" id="btn-door-hinge" style="flex:1; font-size:11px; padding:4px;">铰链: 左</button>
+              <button class="action-btn" id="btn-door-dir" style="flex:1; font-size:11px; padding:4px;">向内开</button>
+            </div>
           </div>
 
           <!-- 操作按钮 -->
