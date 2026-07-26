@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: '.',
   publicDir: 'public',
+  base: '/home-design-lite/',
   build: {
     outDir: 'dist',
     target: 'es2022',
