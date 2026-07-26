@@ -1,19 +1,22 @@
 {
   "name": "home-design-tool",
   "version": "1.0.0",
-  "description": "一个网页版房间改造工具，用户通过可视化编辑器绘制户型图，输入改造需求，系统自动生成优化布局建议。",
-  "main": "index.js",
-  "directories": {
-    "test": "test"
-  },
+  "private": true,
+  "description": "AI 家居设计助手 — 网页版房间改造与布局规划工具",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:node": "node test/test.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "playwright": "^1.62.0"
+    "konva": "^9.3.18"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
   }
 }

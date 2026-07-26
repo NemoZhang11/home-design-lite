@@ -1,118 +1,97 @@
-# 家装改造工具 — 项目背景
+# home-design-tool — AI 家居设计助手
+
+> **一句话**：输入自然语言 → AI 自动生成房间布局方案。  
+> 当前状态：极简原型已验证，进入 Phase 1 验证阶段。详见 [docs/](docs/) 目录。
+
+---
 
 ## 项目概述
 
-一个网页版房间改造工具，用户通过可视化编辑器绘制户型图，输入改造需求，系统自动生成优化布局建议。
+一个 AI 驱动的单房间布局工具。用户用一句话描述需求（"3m×4m 儿童房，需要床、书桌、衣柜，床不要靠窗"），系统自动生成多套布局方案。
 
-**核心流程**：画户型 → 提需求 → 出方案
+**核心流程**：输入需求 → AI 解析 → 自动布局 → 浏览方案 → 修改迭代
 
-## 市场定位
-
-### 痛点
-现有工具要么太重（酷家乐面向专业设计师），要么付费墙严重（Planner 5D、RoomSketcher）。缺少一个**轻量、免费起步、AI 辅助、专注单房间改造**的普通人工具。
-
-### 目标用户
-- 想做儿童房/书房/客厅改造的普通家庭
-- 租房党布置房间
-- 小型装修需求，不需要全屋设计
-
-### 国内竞品
-| 产品 | 定位 | 弱点 |
-|------|------|------|
-| 酷家乐 | 全屋设计、3D 渲染 | 学习曲线陡、偏专业 |
-| 住小帮 | AI 搭配、内容社区 | 编辑器不是核心功能 |
-| 三维家 | 定制家具设计 | 面向 B 端 |
-
-### 国际竞品
-| 产品 | 定位 | 弱点 |
-|------|------|------|
-| Floorplanner | 简单易用 | 免费版有水印、功能限制 |
-| Planner 5D | 2D/3D 双模式 | 付费墙严重 |
-| RoomSketcher | 专业级 | 按年订阅 |
-
-### 差异化方向
-- ✅ 极简上手（3 步完成）
-- ✅ AI 布局建议（非手动摆放）
-- ✅ 免费起步
-- ✅ 专注单房间改造场景
+**不做**：全屋设计、3D 渲染、施工图、社交社区、移动 App。
 
 ---
 
-## 技术可行性
+## 快速体验
 
-### 结论：完全可行，难度中等偏高
+```bash
+# 方式一：打开极简原型 demo（无需安装）
+open demo/index.html
 
-### 技术栈推荐
+# 方式二：运行模块化 TypeScript 版（推荐）
+cd home-design-tool
+npm install
+npm run dev
+
+# 运行自动化测试
+npm test
+```
+
+---
+
+## 文档体系
+
+| 文档 | 内容 | 
+|------|------|
+| [产品定位与路线图](docs/产品需求和项目管理/产品定位与路线图.md) | 目标用户、差异化、4阶段开发计划、移动端策略、MVP范围 |
+| [核心功能与交互流程](docs/产品需求和项目管理/核心功能与交互流程.md) | 用户旅程、功能清单、设备分工、数据流 |
+| [风险评估报告](docs/产品需求和项目管理/风险评估报告.md) | 四大风险分析、止损红线、务实判断 |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | 部署方案对比（保留，待 Phase 3 参考） |
+
+---
+
+## 项目状态
+
+| 阶段 | 状态 | 时间 |
+|------|------|------|
+| 极简原型开发 | ✅ 完成 | 2026-07 |
+| 真实案例验证（次卧改儿童房） | ✅ 完成 | 2026-07 |
+| 产品定位与风险评估 | ✅ 完成 | 2026-07 |
+| Phase 1 — LLM 解析验证 | ⏳ **待开始** | 预计 2-3 周 |
+| Phase 2 — 约束求解引擎 | ⬜ | 预计 3-5 周 |
+| Phase 3 — 界面整合上线 | ⬜ | 预计 3-4 周 |
+| Phase 4 — 端到端验证+商业化 | ⬜ | 预计 2-4 周 |
+
+> 每阶段有明确验收标准和止损红线，不通过则停止或降级。详见 [风险评估报告](docs/产品需求和项目管理/风险评估报告.md)。
+
+---
+
+## 快速部署
+
+```bash
+# 安装依赖
+npm install
+
+# 开发模式（热更新）
+npm run dev
+
+# 生产构建
+npm run build
+
+# 预览构建结果
+npm run preview
+```
+
+一键部署到 Vercel：
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/home-design-tool)
+
+---
+
+## 技术选型（决定）
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| 框架 | React 18+ | 生态最丰富 |
-| Canvas | Konva.js + react-konva | 专为交互编辑器设计，官方 React 绑定 |
-| 状态管理 | Zustand | 轻量、适合编辑器场景 |
-| UI 组件 | 任意（shadcn/ui、Ant Design） | 看偏好 |
+| UI 渲染 | HTML/CSS + 响应式布局 | MVP 不迁 React，降低开发成本 |
+| Canvas | **Konva.js** (npm) | 编辑器交互已验证，TypeScript 严格模式，5 层渲染 |
+| LLM 解析 | GPT-4o / Claude | 仅做"自然语言 → 结构化数据"翻译 |
+| 布局引擎 | **纯前端 JS 约束求解** | 不依赖 LLM 做布局，零算力成本 |
 | 部署 | Vercel / Netlify | 免费层足够起步 |
 
-**为什么选 Konva.js 而不是其他？**
-- Konva.js：专为交互编辑器设计（拖拽、缩放、旋转、吸附），npm 下载量最高的 Canvas 2D 库
-- Fabric.js：更适合 SVG 导入导出和图片编辑，大量对象时性能不如 Konva
-- PixiJS：更适合 2D 游戏，React 集成不友好
-- Three.js：适合 3D 预览，不是 2D 平面图首选
-
-### 已有开源项目可参考
-
-| 项目 | Stars | 技术栈 | 许可证 |
-|------|-------|--------|--------|
-| [Arcada](https://github.com/mehanix/arcada) | 384 ⭐ | React + PixiJS + Zustand | Apache 2.0 |
-| [arcada-planner](https://github.com/fedepaj/arcada-planner) | 7 ⭐ | React + Konva.js + Zustand | MIT |
-| [react-planner](https://github.com/cvdlab/react-planner) | — | React + Three.js | MIT |
-| [floorist](https://github.com/AimTune/floorist/) | — | 零依赖 Web Component | MIT |
-
-**关键发现**：Arcada 作者是个人开发者，README 中写道 *"大部分户型设计工具要么付费，要么太难用，所以我决定自己写一个"* — 384 stars 证明了需求存在，技术门槛可跨越。
-
----
-
-## AI 布局建议 — 技术路线
-
-### 路线 A：LLM + 规则引擎（推荐 MVP，难度中）
-
-```
-用户需求（自然语言）
-    ↓
-LLM（GPT-4o/Claude）解析 → 结构化数据（家具列表、初始位置）
-    ↓
-贪心规则引擎精修（碰撞检测 + 贴墙对齐 + 通道间距）
-    ↓
-输出最终布局
-```
-
-**参考论文**：[Text-to-Layout (2025)](https://ar5iv.labs.arxiv.org/html/2509.00543) — LLM 生成初始布局 + 贪心算法精修，已验证可行。
-
-- 每次调用 LLM 成本约几分钱
-- 精修算法核心代码 200-300 行
-- 可在本地 demo 中用纯规则引擎模拟（无需 API）
-
-### 路线 B：LLM + 约束优化（进阶）
-
-- [FlairGPT (2024)](https://flairgpt.github.io/)：LLM 提取约束 → 逐步优化 → 效果显著优于纯 LLM
-- [Co-Layout (AAAI 2025)](https://github.com/xccElephant/co-layout)：LLM + 网格整数规划 → 可输出到 Blender 3D
-
-### 路线 C：端到端 ML（研究级，不推荐 MVP）
-
-- OptiScene (NeurIPS 2025)：微调 LLM 直接输出布局
-- 需要大量训练数据和 GPU
-
----
-
-## 工期估算（1 人全职）
-
-| 模块 | 工期 | 难度 |
-|------|------|------|
-| 户型编辑器（画墙/门窗/家具） | 4-8 周 | ⭐⭐⭐ |
-| 需求引导流程 | 1-2 周 | ⭐ |
-| AI 布局建议 | 4-8 周 | ⭐⭐⭐⭐ |
-| 结果展示与交互优化 | 2-3 周 | ⭐⭐ |
-| 部署上线 | 1 周 | ⭐ |
-| **合计** | **12-22 周（3-5.5 月）** | |
+**关键原则**：LLM 只做语义理解翻译，不做空间决策。布局由确定性算法完成，确保结果可复现、可离线降级。
 
 ---
 
@@ -120,14 +99,64 @@ LLM（GPT-4o/Claude）解析 → 结构化数据（家具列表、初始位置�
 
 ```
 home-design-tool/
-├── README.md           # 本文档：项目背景与技术可行性
-├── DEPLOYMENT.md       # 部署方案对比（Web vs 微信小程序）
-└── demo/
-    └── index.html      # 极简 demo：单文件户型编辑器
+├── README.md                    # 本文件
+├── DEPLOYMENT.md                # 部署方案对比
+├── package.json                 # 依赖配置
+├── tsconfig.json                # TypeScript 配置
+├── vite.config.ts               # Vite 构建配置
+├── vercel.json                  # Vercel 部署配置
+├── index.html                   # Vite 入口 HTML
+├── public/
+│   └── favicon.svg              # SVG 图标
+├── src/
+│   ├── main.ts                  # 主入口：Konva 初始化、事件绑定
+│   ├── engine/                  # 纯函数引擎（无 Konva、无 DOM）
+│   │   ├── types.ts             # TypeScript 类型定义
+│   │   ├── constants.ts         # 常量与家具定义
+│   │   ├── logger.ts            # 日志系统
+│   │   ├── geometry.ts          # 几何/数学工具函数
+│   │   ├── walls.ts             # 墙构造逻辑
+│   │   ├── openings.ts          # 门/窗数据逻辑
+│   │   └── layout.ts            # 智能布局算法
+│   ├── state/
+│   │   └── store.ts             # 状态管理
+│   ├── renderer/                # Konva 渲染层
+│   │   ├── gridLayer.ts         # 网格渲染
+│   │   ├── wallLayer.ts         # 墙段渲染
+│   │   ├── furnitureLayer.ts    # 家具渲染
+│   │   ├── doorLayer.ts         # 门/窗渲染
+│   │   └── previewLayer.ts      # 预览幽灵渲染
+│   ├── ui/                      # DOM 事件处理
+│   │   ├── toolbar.ts           # 工具栏事件
+│   │   ├── sidebar.ts           # 侧边栏事件
+│   │   └── statusBar.ts         # 状态栏更新
+│   └── styles/
+│       └── main.css             # 全局样式
+├── demo/
+│   └── index.html               # 极简原型（保留，2535 行 Konva.js）
+├── test/
+│   ├── test.js                  # Playwright 自动化测试
+│   └── test-results.txt          # 测试结果
+├── docs/
+│   └── 产品需求和项目管理/
+│       ├── 产品定位与路线图.md    # 定位、路线图、策略
+│       ├── 核心功能与交互流程.md   # 功能规格、交互流程
+│       └── 风险评估报告.md       # 风险与止损
+│   └── architecture/             # (待补充)
+└── 次卧改儿童房/                  # 真实案例验证数据
+    ├── 次卧改儿童房.md             # 原始需求
+    ├── 房间布局设计工作流.md        # 标准化流程（Agent 行为模板）
+    └── layout_all.py              # matplotlib 出图脚本
 ```
 
-## 下一步
+---
 
-1. 运行 `demo/index.html` 体验极简原型
-2. 根据体验决定是否投入正式开发
-3. 正式开发建议基于 arcada-planner（MIT）改造
+## 关键决策记录
+
+| 序号 | 决策 | 结论 |
+|------|------|------|
+| 01 | 移动端策略 | 一套响应式 Web，不做独立移动版/小程序 |
+| 02 | 编辑器框架 | 基于现有 demo 封装 API，暂不迁 React |
+| 03 | LLM 定位 | 只做语义翻译，不做布局决策 |
+| 04 | 开源策略 | 编辑器开源，AI 引擎闭源 |
+| 05 | 验证顺序 | LLM 解析 → 布局引擎 → 界面整合 → 商业化验证 |
