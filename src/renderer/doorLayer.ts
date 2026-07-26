@@ -96,6 +96,11 @@ export function renderDoor(
 
   // 事件
   group.on('click', () => onSelect(door.id));
+  group.on('dblclick', function() {
+    onSelect(door.id);
+    const event = new CustomEvent('element-dblclick', { detail: { type: 'door', id: door.id } });
+    document.dispatchEvent(event);
+  });
   group.on('dragstart', () => onSelect(door.id));
   group.on('dragmove', function() {
     onDragMove(door.id, this.x(), this.y());
@@ -156,13 +161,13 @@ export function renderWindow(
   });
   group.add(frame);
 
-  // 3条竖线 (玻璃分隔) — 调整 y 范围匹配新高度
+  // 3条竖线 (玻璃分隔) — 更粗更亮
   for (let i = 1; i <= 3; i++) {
     const lineX = -halfW + (win.width / 4) * i;
     const line = new Konva.Line({
       points: [lineX, -WINDOW_FRAME_HEIGHT / 2 + 2, lineX, WINDOW_FRAME_HEIGHT / 2 - 2],
       stroke: '#2980B9',
-      strokeWidth: 1,
+      strokeWidth: 1.2,
       name: 'window-line',
     });
     group.add(line);
@@ -170,6 +175,11 @@ export function renderWindow(
 
   // 事件
   group.on('click', () => onSelect(win.id));
+  group.on('dblclick', function() {
+    onSelect(win.id);
+    const event = new CustomEvent('element-dblclick', { detail: { type: 'window', id: win.id } });
+    document.dispatchEvent(event);
+  });
   group.on('dragstart', () => onSelect(win.id));
   group.on('dragmove', function() {
     onDragMove(win.id, this.x(), this.y());

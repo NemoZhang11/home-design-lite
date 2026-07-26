@@ -11,6 +11,7 @@ import {
   CANVAS_WIDTH, CANVAS_HEIGHT, WALL_COLOR, WALL_SELECTED_COLOR,
   WALL_CLOSE_RADIUS, DOOR_DEFAULT_WIDTH, WINDOW_DEFAULT_WIDTH,
   FURNITURE_DEFS, WALL_THICKNESS, MIN_DOOR_WIDTH, MAX_DOOR_WIDTH,
+  MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH,
 } from './engine/constants';
 import {
   dist, snapToGrid, angleBetween, clonePoints,
@@ -447,6 +448,7 @@ function clearSelectionFull(): void {
   }
   clearSelection();
   document.getElementById('door-panel')!.style.display = 'none';
+  document.getElementById('window-panel')!.style.display = 'none';
   overlayLayer.destroyChildren();
   overlayLayer.batchDraw();
 }
@@ -594,6 +596,14 @@ function selectWindow(id: number): void {
   state.selectedElementId = id;
   state.selectedElementType = 'window';
   log('选中窗户', { id });
+
+  // 显示窗户参数面板
+  const panel = document.getElementById('window-panel')!;
+  panel.style.display = 'block';
+
+  // 宽度输入
+  const widthInput = document.getElementById('window-width-input') as HTMLInputElement;
+  widthInput.value = String(win.width);
 
   renderWindowSelectionHandles(win, state.wallSegments, overlayLayer, (newWidth: number) => {
     win.width = newWidth;
@@ -775,6 +785,7 @@ function clearAllFull(): void {
   state.placingElementType = null;
   document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
   document.getElementById('door-panel')!.style.display = 'none';
+  document.getElementById('window-panel')!.style.display = 'none';
 
   wallLayer.destroyChildren();
   furnitureLayer.destroyChildren();
@@ -966,13 +977,27 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
     }
   }
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (state.mode === 'place') {
-      const selected = (furnitureLayer.find('Group') as Konva.Group[]).filter(g => {
-        const rect = g.findOne('Rect') as Konva.Rect | undefined;
-        return rect && rect.stroke() === '#3498db';
-      });
-      selected.forEach(g => removeFurniture(g));
+    // 删除选中的墙段
+    if (state.mode === 'draw' && state.selectedWallId !== null && state.selectedElementId === null) {
+      const seg = state.wallSegments.find(s => s.id === state.selectedWallId);
+      if (seg && state.wallPoints.length >= 2) {
+        pushUndo();
+        const segIdx = state.wallSegments.indexOf(seg);
+        if (segIdx !== -1) {
+          const ptIdx = (segIdx + 1) % state.wallPoints.length;
+          if (state.isClosed && state.wallPoints.length <= 3) {
+            state.isClosed = false;
+          }
+          state.wallPoints.splice(ptIdx, 1);
+          if (state.wallPoints.length < 3) state.isClosed = false;
+        }
+        rebuildWallSegmentsFull();
+        updateUndoRedoButtons();
+        triggerSave();
+        return;
+      }
     }
+    // 删除选中的门/窗
     if (state.mode === 'draw' && state.selectedElementId !== null) {
       if (state.selectedElementType === 'door') {
         const door = state.doors.find(d => d.id === state.selectedElementId);
@@ -994,6 +1019,14 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
           return;
         }
       }
+    }
+    // 删除选中的家具
+    if (state.mode === 'place') {
+      const selected = (furnitureLayer.find('Group') as Konva.Group[]).filter(g => {
+        const rect = g.findOne('Rect') as Konva.Rect | undefined;
+        return rect && rect.stroke() === '#3498db';
+      });
+      selected.forEach(g => removeFurniture(g));
     }
   }
   if (e.key === 'Escape') {
@@ -1059,6 +1092,16 @@ document.addEventListener('door-changed', function() {
   triggerSave();
 });
 
+// ---- 监听 element-dblclick 事件 (双击门/窗选中) ----
+document.addEventListener('element-dblclick', function(e: Event) {
+  const detail = (e as CustomEvent).detail;
+  if (detail.type === 'door') {
+    selectDoor(detail.id);
+  } else if (detail.type === 'window') {
+    selectWindow(detail.id);
+  }
+});
+
 // ============================================================
 //  绑定 UI 事件
 // ============================================================
@@ -1106,6 +1149,23 @@ document.getElementById('door-width-input')!.addEventListener('change', function
   door.width = val;
   rebuildDoorsAndWindowsFull();
   selectDoor(id);
+  triggerSave();
+});
+
+// ---- 窗户参数面板事件 ----
+document.getElementById('window-width-input')!.addEventListener('change', function() {
+  const id = state.selectedElementId;
+  if (id === null || state.selectedElementType !== 'window') return;
+  const win = state.windows.find(w => w.id === id);
+  if (!win) return;
+  const input = this as HTMLInputElement;
+  let val = parseInt(input.value, 10);
+  if (isNaN(val)) val = WINDOW_DEFAULT_WIDTH;
+  val = Math.max(MIN_WINDOW_WIDTH, Math.min(MAX_WINDOW_WIDTH, val));
+  input.value = String(val);
+  win.width = val;
+  rebuildDoorsAndWindowsFull();
+  selectWindow(id);
   triggerSave();
 });
 
@@ -1239,6 +1299,7 @@ document.querySelectorAll('.template-btn').forEach((btn) => {
     state.placingElementType = null;
     document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
     document.getElementById('door-panel')!.style.display = 'none';
+    document.getElementById('window-panel')!.style.display = 'none';
     wallLayer.destroyChildren();
     furnitureLayer.destroyChildren();
     overlayLayer.destroyChildren();
