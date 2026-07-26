@@ -222,6 +222,22 @@ body {
 .status-bar .status-dot.placing { background: #3498db; }
 .status-bar .status-dot.success { background: #27ae60; }
 
+/* ===== 预设模板按钮 ===== */
+.template-btn {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.template-btn:hover {
+  background: rgba(255,255,255,0.3);
+}
+
 /* ===== 快捷键提示 ===== */
 .hint {
   font-size: 12px;

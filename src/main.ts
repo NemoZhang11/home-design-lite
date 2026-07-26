@@ -39,6 +39,64 @@ import { bindSidebarEvents } from './ui/sidebar';
 import './styles/main.css';
 
 // ============================================================
+//  预设模板
+// ============================================================
+
+interface RoomTemplate {
+  label: string;
+  width: number;   // cm
+  height: number;  // cm
+  furniture: Array<{ type: string; x: number; y: number }>;
+}
+
+const ROOM_TEMPLATES: Record<string, RoomTemplate> = {
+  children: {
+    label: '儿童房 4m×3m',
+    width: 400,
+    height: 300,
+    furniture: [
+      { type: 'bed', x: 240, y: 200 },
+      { type: 'desk', x: 500, y: 170 },
+      { type: 'wardrobe', x: 240, y: 400 },
+      { type: 'chair', x: 520, y: 250 },
+    ],
+  },
+  bedroom: {
+    label: '主卧 5m×4m',
+    width: 500,
+    height: 400,
+    furniture: [
+      { type: 'bed', x: 240, y: 200 },
+      { type: 'wardrobe', x: 600, y: 200 },
+      { type: 'desk', x: 240, y: 480 },
+      { type: 'chair', x: 280, y: 500 },
+      { type: 'sofa', x: 600, y: 480 },
+    ],
+  },
+  study: {
+    label: '书房 3m×3m',
+    width: 300,
+    height: 300,
+    furniture: [
+      { type: 'desk', x: 250, y: 180 },
+      { type: 'chair', x: 260, y: 250 },
+      { type: 'wardrobe', x: 200, y: 260 },
+    ],
+  },
+  living: {
+    label: '客厅 6m×4m',
+    width: 600,
+    height: 400,
+    furniture: [
+      { type: 'sofa', x: 300, y: 200 },
+      { type: 'desk', x: 500, y: 350 },
+      { type: 'chair', x: 550, y: 380 },
+      { type: 'wardrobe', x: 200, y: 350 },
+    ],
+  },
+};
+
+// ============================================================
 //  Konva 初始化
 // ============================================================
 
@@ -1049,6 +1107,70 @@ placeFurnitureFull('chair', 500, 260);
 placeFurnitureFull('sofa', 420, 370);
 
 setStatus('🏠 欢迎！已加载示例房间。试试切换模式或拖拽家具', 'idle');
+
+// ---- AI 输入框 ----
+const aiInput = document.getElementById('ai-input') as HTMLInputElement;
+if (aiInput) {
+  aiInput.addEventListener('keydown', function(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      const text = aiInput.value.trim();
+      if (!text) return;
+      log('用户AI输入', { text });
+      setStatus(`已记录需求：${text.slice(0, 40)}... — AI 功能开发中`, 'success');
+      aiInput.value = '';
+    }
+  });
+}
+
+// ---- 预设模板按钮 ----
+document.querySelectorAll('.template-btn').forEach((btn) => {
+  btn.addEventListener('click', function(this: HTMLElement) {
+    const templateKey = this.dataset.template;
+    if (!templateKey) return;
+    const tmpl = ROOM_TEMPLATES[templateKey];
+    if (!tmpl) return;
+
+    log('加载模板', { template: tmpl.label });
+
+    // Clear everything
+    state.wallPoints = [];
+    state.wallSegments = [];
+    state.isClosed = false;
+    state.undoStack = [];
+    state.redoStack = [];
+    state.doors = [];
+    state.windows = [];
+    state.furnitureItems = [];
+    state.selectedWallId = null;
+    state.selectedElementId = null;
+    state.selectedElementType = null;
+    state.placingElementType = null;
+    document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
+    document.getElementById('door-panel')!.style.display = 'none';
+    wallLayer.destroyChildren();
+    furnitureLayer.destroyChildren();
+    overlayLayer.destroyChildren();
+    previewLayer.destroyChildren();
+
+    // Create room from template dimensions
+    const pts = createRoomFromDimensions(tmpl.width, tmpl.height);
+    for (const p of pts) {
+      state.wallPoints.push({ x: p.x, y: p.y });
+    }
+    state.isClosed = true;
+    rebuildWallSegmentsFull();
+
+    // Place template furniture
+    for (const furn of tmpl.furniture) {
+      placeFurnitureFull(furn.type, furn.x, furn.y);
+    }
+
+    updateUndoRedoButtons();
+    wallLayer.batchDraw();
+    furnitureLayer.batchDraw();
+    setStatus(`已加载模板：${tmpl.label} — 可自由编辑`, 'success');
+  });
+});
 
 log('房间改造工具已加载');
 console.log('模式: 画户型 | 放家具 | 智能布局');

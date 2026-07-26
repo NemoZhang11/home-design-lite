@@ -12,6 +12,18 @@
       <!-- 标题栏 -->
       <div class="title-bar">
         🏠 房间改造工具
+        <div class="ai-input-area" style="display:flex; gap:8px; align-items:center; flex:1; justify-content:center; margin:0 20px;">
+          <input type="text" id="ai-input" placeholder="描述你的房间需求，例如：3m×4m 儿童房，需要床和书桌..."
+            style="flex:1; max-width:400px; padding:6px 12px; border:1px solid rgba(255,255,255,0.3); border-radius:6px;
+                   background:rgba(255,255,255,0.15); color:#fff; font-size:13px; outline:none;"
+          >
+          <div class="template-btns" style="display:flex; gap:4px;">
+            <button class="template-btn" data-template="children">👶 儿童房</button>
+            <button class="template-btn" data-template="bedroom">🛏️ 主卧</button>
+            <button class="template-btn" data-template="study">📚 书房</button>
+            <button class="template-btn" data-template="living">🛋️ 客厅</button>
+          </div>
+        </div>
         <small>TypeScript + Konva.js · 模块化版</small>
       </div>
 
@@ -145,6 +157,11 @@
         <span class="status-dot idle" id="status-dot"></span>
         <span id="status-text">画户型模式 — 点击画布放置墙点，闭合形成房间</span>
         <span class="hint">💡 拖拽家具 · 滚轮缩放 · 右键删除</span>
+        <a href="https://github.com/NemoZhang11/home-design-lite/issues/new"
+           target="_blank" rel="noopener"
+           style="color:#3498db; text-decoration:none; margin-left:12px; font-weight:500;">
+          💬 反馈
+        </a>
       </div>
     </div>
   </div>
