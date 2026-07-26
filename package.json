@@ -1,0 +1,19 @@
+{
+  "name": "home-design-tool",
+  "version": "1.0.0",
+  "description": "一个网页版房间改造工具，用户通过可视化编辑器绘制户型图，输入改造需求，系统自动生成优化布局建议。",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.62.0"
+  }
+}
