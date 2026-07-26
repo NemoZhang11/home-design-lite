@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🏠 房间改造工具</title>
+  <link rel="icon" type="image/svg+xml" href="/home-design-lite/favicon.svg" />
+  <script type="module" crossorigin src="/home-design-lite/assets/index-C6DzOjZW.js"></script>
+  <link rel="stylesheet" crossorigin href="/home-design-lite/assets/index-hviCHzLV.css">
+</head>
+<body>
+  <div id="app">
+    <div class="app-container">
+      <!-- 标题栏 -->
+      <div class="title-bar">
+        🏠 房间改造工具
+        <small>TypeScript + Konva.js · 模块化版</small>
+      </div>
+
+      <!-- 主体 -->
+      <div class="main-layout">
+        <!-- 左侧面板 -->
+        <div class="sidebar">
+          <div class="sidebar-section-title">模式切换</div>
+
+          <!-- 模式 1: 画户型 -->
+          <button class="mode-btn active" data-mode="draw" id="mode-draw">
+            <span class="mode-icon">✏️</span> 画户型
+          </button>
+
+          <!-- 模式 2: 放家具 -->
+          <button class="mode-btn" data-mode="place" id="mode-place">
+            <span class="mode-icon">🪑</span> 放家具
+          </button>
+
+          <!-- 模式 3: 智能布局 -->
+          <button class="mode-btn" data-mode="layout" id="mode-layout">
+            <span class="mode-icon">✨</span> 智能布局
+          </button>
+
+          <!-- 建筑元素 -->
+          <div class="sidebar-section-title">建筑元素</div>
+          <div class="furniture-catalog visible" id="building-catalog">
+            <div class="furniture-card" data-type="door">
+              <span class="color-swatch" style="background:#8B7355"></span>
+              <span class="card-label">🚪 门</span>
+              <span class="card-size">80×6</span>
+            </div>
+            <div class="furniture-card" data-type="window">
+              <span class="color-swatch" style="background:#D6EAF8"></span>
+              <span class="card-label">🪟 窗户</span>
+              <span class="card-size">100×6</span>
+            </div>
+          </div>
+
+          <!-- 家具目录 (仅模式2显示) -->
+          <div class="furniture-catalog" id="furniture-catalog">
+            <div class="sidebar-section-title">家具目录</div>
+
+            <div class="furniture-card" data-type="bed">
+              <span class="color-swatch" style="background:#E8D5B7"></span>
+              <span class="card-label">🛏️ 床</span>
+              <span class="card-size">160×200</span>
+            </div>
+            <div class="furniture-card" data-type="desk">
+              <span class="color-swatch" style="background:#C4A882"></span>
+              <span class="card-label">📝 书桌</span>
+              <span class="card-size">120×60</span>
+            </div>
+            <div class="furniture-card" data-type="wardrobe">
+              <span class="color-swatch" style="background:#A8D8EA"></span>
+              <span class="card-label">🗄️ 衣柜</span>
+              <span class="card-size">100×60</span>
+            </div>
+            <div class="furniture-card" data-type="chair">
+              <span class="color-swatch" style="background:#B5EAD7"></span>
+              <span class="card-label">💺 椅子</span>
+              <span class="card-size">40×40</span>
+            </div>
+            <div class="furniture-card" data-type="sofa">
+              <span class="color-swatch" style="background:#FFD3B6"></span>
+              <span class="card-label">🛋️ 沙发</span>
+              <span class="card-size">180×80</span>
+            </div>
+          </div>
+
+          <!-- 一键创建房间 -->
+          <div style="margin-top:8px; padding:8px; background:#f0ece6; border-radius:8px;">
+            <div style="font-size:12px; margin-bottom:6px; color:#7f8c8d; font-weight:600;">一键创建房间</div>
+            <div style="display:flex; gap:4px; align-items:center; margin-bottom:4px;">
+              <input type="number" id="room-width" placeholder="宽(cm)" min="10" max="5000" step="10" value="400"
+                style="width:60px; padding:3px 4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px; text-align:center;">
+              <span style="font-size:12px; color:#7f8c8d;">×</span>
+              <input type="number" id="room-height" placeholder="长(cm)" min="10" max="5000" step="10" value="300"
+                style="width:60px; padding:3px 4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px; text-align:center;">
+              <span style="font-size:11px; color:#95a5a6;">cm</span>
+            </div>
+            <button class="action-btn primary" id="btn-create-room" style="width:100%; font-size:12px; padding:5px;">
+              ✨ 创建房间
+            </button>
+          </div>
+
+          <!-- 门方向面板 -->
+          <div id="door-panel" style="display:none; padding:8px; background:#f0ece6; border-radius:8px; margin-top:4px;">
+            <div style="font-size:12px; margin-bottom:4px; color:#7f8c8d;">开门方向</div>
+            <button class="action-btn" id="btn-door-dir" style="width:100%;">向内开 ▼</button>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="action-buttons">
+            <button class="action-btn primary" id="btn-layout" title="运行智能布局算法">
+              ✨ 智能布局
+            </button>
+            <button class="action-btn" id="btn-grid" title="切换网格显示">
+              ▣ 网格
+            </button>
+            <button class="action-btn" id="btn-undo" title="撤销上一个墙点 (Ctrl+Z)">
+              ↩ 撤销 <span class="shortcut">⌘Z</span>
+            </button>
+            <button class="action-btn" id="btn-redo" title="重做 (Ctrl+Y)">
+              ↪ 重做 <span class="shortcut">⌘Y</span>
+            </button>
+            <button class="action-btn danger" id="btn-clear">
+              🗑️ 清除全部
+            </button>
+          </div>
+        </div>
+
+        <!-- 画布 -->
+        <div class="canvas-wrapper">
+          <div class="canvas-container">
+            <div id="canvas-stage"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 状态栏 -->
+      <div class="status-bar" id="status-bar">
+        <span class="status-dot idle" id="status-dot"></span>
+        <span id="status-text">画户型模式 — 点击画布放置墙点，闭合形成房间</span>
+        <span class="hint">💡 拖拽家具 · 滚轮缩放 · 右键删除</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
