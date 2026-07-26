@@ -503,10 +503,7 @@ function createDoorFull(wallIdx: number, t: number, width: number, swingInward: 
     }
   );
 
-  // 重建墙段以显示缺口
-  state._rebuildingDoorsWindows = true;
-  rebuildWallSegmentsFull();
-  state._rebuildingDoorsWindows = false;
+  wallLayer.batchDraw();
   triggerSave();
 }
 
@@ -551,10 +548,7 @@ function createWindowFull(wallIdx: number, t: number, width: number): void {
     }
   );
 
-  // 重建墙段以显示缺口
-  state._rebuildingDoorsWindows = true;
-  rebuildWallSegmentsFull();
-  state._rebuildingDoorsWindows = false;
+  wallLayer.batchDraw();
   triggerSave();
 }
 

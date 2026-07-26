@@ -39,9 +39,9 @@ export function renderDoor(
     width: door.width,
     height: DOOR_BODY_HEIGHT,
     fill: DOOR_FILL,
-    stroke: '#922B21',
+    stroke: '#C0392B',
     strokeWidth: 2,
-    cornerRadius: 2,
+    cornerRadius: 3,
     name: 'door-body',
   });
   group.add(doorRect);
@@ -70,7 +70,7 @@ export function renderDoor(
     y: 0,
     radius: 4,
     fill: '#FFFFFF',
-    stroke: '#922B21',
+    stroke: '#C0392B',
     strokeWidth: 2,
     name: 'door-hinge',
   });
@@ -84,9 +84,9 @@ export function renderDoor(
     outerRadius: door.width,
     angle: 90,
     fill: DOOR_ARC_FILL,
-    stroke: '#C0392B',
+    stroke: '#E74C3C',
     strokeWidth: 2,
-    dash: [4, 3],
+    dash: [5, 3],
     name: 'door-arc',
   });
   group.add(arc);
