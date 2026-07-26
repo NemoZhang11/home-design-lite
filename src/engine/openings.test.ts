@@ -97,7 +97,7 @@ describe('createWindowData', () => {
 // ============================================================
 describe('rebuildDoorsAndWindowsData', () => {
   function makeDoor(id: number, wallIdx: number, t: number, width: number = 80, swingInward: boolean = true): Door {
-    return { id, wallIdx, t, width, swingInward, hingeX: 0, hingeY: 0 };
+    return { id, wallIdx, t, width, swingInward, hingeSide: 'left', hingeX: 0, hingeY: 0 };
   }
   function makeWin(id: number, wallIdx: number, t: number, width: number = 100): Window {
     return { id, wallIdx, t, width };
@@ -141,6 +141,7 @@ describe('rebuildDoorsAndWindowsData', () => {
       t: 0.25,
       width: 60,
       swingInward: false,
+      hingeSide: 'left',
     });
   });
 

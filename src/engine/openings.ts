@@ -13,7 +13,8 @@ export function createDoorData(
   width: number,
   swingInward: boolean,
   segs: WallSegment[],
-  nextId: number
+  nextId: number,
+  hingeSide: 'left' | 'right' = 'left'
 ): Door | null {
   const seg = segs[wallIdx];
   if (!seg) return null;
@@ -28,6 +29,7 @@ export function createDoorData(
     t,
     width: w,
     swingInward,
+    hingeSide,
     hingeX: pos.x,
     hingeY: pos.y,
   };
@@ -70,6 +72,7 @@ export function rebuildDoorsAndWindowsData(
       t: d.t,
       width: d.width,
       swingInward: d.swingInward,
+      hingeSide: d.hingeSide,
     }));
 
   const winData: WindowData[] = windows

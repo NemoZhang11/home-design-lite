@@ -25,6 +25,7 @@ export interface Door {
   t: number;
   width: number;
   swingInward: boolean;
+  hingeSide: 'left' | 'right';
   hingeX: number;
   hingeY: number;
 }
@@ -80,6 +81,7 @@ export interface DoorData {
   t: number;
   width: number;
   swingInward: boolean;
+  hingeSide: 'left' | 'right';
 }
 
 export interface WindowData {

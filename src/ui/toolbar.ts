@@ -106,15 +106,13 @@ export function bindToolbarEvents(callbacks: ToolbarCallbacks): void {
   const doorDirBtn = document.getElementById('btn-door-dir');
   if (doorDirBtn) {
     doorDirBtn.addEventListener('click', function() {
-      // 找到选中的门
       if (state.selectedElementType !== 'door' || state.selectedElementId === null) return;
       const door = state.doors.find(d => d.id === state.selectedElementId);
       if (!door) return;
       door.swingInward = !door.swingInward;
-      this.textContent = door.swingInward ? '向内开 ▼' : '向外开 ▼';
-      // The arc update is handled by the renderer when we call rebuildDoorsAndWindows
-      // For immediate visual update, we need to trigger a re-render
-      // This will be handled by the main module via a callback
+      this.textContent = door.swingInward ? '向内开' : '向外开';
+      // Trigger re-render via custom event
+      document.dispatchEvent(new CustomEvent('door-changed'));
     });
   }
 }

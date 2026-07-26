@@ -10,7 +10,7 @@ import type { EditorMode, WallSegment, Point } from './engine/types';
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT, WALL_COLOR, WALL_SELECTED_COLOR,
   WALL_CLOSE_RADIUS, DOOR_DEFAULT_WIDTH, WINDOW_DEFAULT_WIDTH,
-  FURNITURE_DEFS, WALL_THICKNESS,
+  FURNITURE_DEFS, WALL_THICKNESS, MIN_DOOR_WIDTH, MAX_DOOR_WIDTH,
 } from './engine/constants';
 import {
   dist, snapToGrid, angleBetween, clonePoints,
@@ -370,19 +370,18 @@ function clearSelectionFull(): void {
 // ============================================================
 
 /** 创建门 (Konva) */
-function createDoorFull(wallIdx: number, t: number, width: number, swingInward: boolean): void {
+function createDoorFull(wallIdx: number, t: number, width: number, swingInward: boolean, hingeSide: 'left' | 'right' = 'left'): void {
   const seg = state.wallSegments[wallIdx];
   if (!seg) return;
 
   const w = width || DOOR_DEFAULT_WIDTH;
   const sw = swingInward !== undefined ? swingInward : true;
-  log('创建门', { wallIdx, t, width: w, swingInward: sw });
+  log('创建门', { wallIdx, t, width: w, swingInward: sw, hingeSide });
 
   const pos = getWallPos(wallIdx, t, state.wallSegments);
   if (!pos) return;
 
   const id = state.nextDoorId++;
-  const angle = seg.angle;
 
   const doorData = {
     id,
@@ -390,6 +389,7 @@ function createDoorFull(wallIdx: number, t: number, width: number, swingInward: 
     t,
     width: w,
     swingInward: sw,
+    hingeSide,
     hingeX: pos.x,
     hingeY: pos.y,
   };
@@ -477,13 +477,23 @@ function selectDoor(id: number): void {
   if (!door) return;
   state.selectedElementId = id;
   state.selectedElementType = 'door';
-  log('选中门', { id, swingInward: door.swingInward });
+  log('选中门', { id, swingInward: door.swingInward, hingeSide: door.hingeSide });
 
-  // 显示门方向面板
+  // 显示门参数面板
   const panel = document.getElementById('door-panel')!;
   panel.style.display = 'block';
-  const btn = document.getElementById('btn-door-dir')!;
-  btn.textContent = door.swingInward ? '向内开 ▼' : '向外开 ▼';
+
+  // 宽度输入
+  const widthInput = document.getElementById('door-width-input') as HTMLInputElement;
+  widthInput.value = String(door.width);
+
+  // 铰链侧按钮
+  const hingeBtn = document.getElementById('btn-door-hinge')!;
+  hingeBtn.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
+
+  // 开门方向按钮
+  const dirBtn = document.getElementById('btn-door-dir')!;
+  dirBtn.textContent = door.swingInward ? '向内开' : '向外开';
 
   renderDoorSelectionHandles(door, state.wallSegments, overlayLayer, (newWidth: number) => {
     door.width = newWidth;
@@ -534,7 +544,7 @@ function rebuildDoorsAndWindowsFull(): void {
 
   // 重新创建门/窗
   for (const dd of doorData) {
-    createDoorFull(dd.wallIdx, dd.t, dd.width, dd.swingInward);
+    createDoorFull(dd.wallIdx, dd.t, dd.width, dd.swingInward, dd.hingeSide);
   }
   for (const wd of winData) {
     createWindowFull(wd.wallIdx, wd.t, wd.width);
@@ -781,7 +791,7 @@ stage.on('click', function(e) {
     if (state.placingElementType === 'door') {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
       if (result && result.dist < 30) {
-        createDoorFull(result.idx, result.t, DOOR_DEFAULT_WIDTH, true);
+        createDoorFull(result.idx, result.t, DOOR_DEFAULT_WIDTH, true, 'left');
         setStatus('门已放置 — 点击继续放置，Esc 退出', 'success');
         log('门已放置', { wallIdx: result.idx, t: result.t });
       }
@@ -948,6 +958,14 @@ document.addEventListener('wall-changed', function() {
   updateUndoRedoButtons();
 });
 
+// ---- 监听 door-changed 事件 (用于门方向切换) ----
+document.addEventListener('door-changed', function() {
+  const id = state.selectedElementId;
+  if (id === null || state.selectedElementType !== 'door') return;
+  rebuildDoorsAndWindowsFull();
+  selectDoor(id);
+});
+
 // ============================================================
 //  绑定 UI 事件
 // ============================================================
@@ -961,12 +979,39 @@ bindToolbarEvents({
 });
 
 bindSidebarEvents({
-  onPlaceDoor: (wallIdx: number, t: number) => createDoorFull(wallIdx, t, DOOR_DEFAULT_WIDTH, true),
+  onPlaceDoor: (wallIdx: number, t: number) => createDoorFull(wallIdx, t, DOOR_DEFAULT_WIDTH, true, 'left'),
   onPlaceWindow: (wallIdx: number, t: number) => createWindowFull(wallIdx, t, WINDOW_DEFAULT_WIDTH),
   onPlaceFurniture: (type: string, x: number, y: number) => placeFurnitureFull(type, x, y),
   onStartDragFromCatalog: (type: string) => {
     state.dragFurnitureType = type;
   },
+});
+
+// ---- 门参数面板事件 ----
+document.getElementById('btn-door-hinge')!.addEventListener('click', function() {
+  const id = state.selectedElementId;
+  if (id === null || state.selectedElementType !== 'door') return;
+  const door = state.doors.find(d => d.id === id);
+  if (!door) return;
+  door.hingeSide = door.hingeSide === 'left' ? 'right' : 'left';
+  this.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
+  rebuildDoorsAndWindowsFull();
+  selectDoor(id);
+});
+
+document.getElementById('door-width-input')!.addEventListener('change', function() {
+  const id = state.selectedElementId;
+  if (id === null || state.selectedElementType !== 'door') return;
+  const door = state.doors.find(d => d.id === id);
+  if (!door) return;
+  const input = this as HTMLInputElement;
+  let val = parseInt(input.value, 10);
+  if (isNaN(val)) val = DOOR_DEFAULT_WIDTH;
+  val = Math.max(MIN_DOOR_WIDTH, Math.min(MAX_DOOR_WIDTH, val));
+  input.value = String(val);
+  door.width = val;
+  rebuildDoorsAndWindowsFull();
+  selectDoor(id);
 });
 
 // ============================================================

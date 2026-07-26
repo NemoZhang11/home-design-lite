@@ -22,6 +22,13 @@ export const MAX_DOOR_WIDTH = 200;
 export const MIN_WINDOW_WIDTH = 40;
 export const MAX_WINDOW_WIDTH = 200;
 
+// 门/窗视觉常量 (比墙更突出)
+export const DOOR_FILL = '#C0392B';
+export const DOOR_ARC_FILL = 'rgba(192, 57, 43, 0.2)';
+export const DOOR_BODY_HEIGHT = 20;
+export const WINDOW_FRAME_FILL = '#85C1E9';
+export const WINDOW_FRAME_HEIGHT = 20;
+
 // 家具定义: 类型 → { 颜色, 宽, 高, 中文名 }
 export const FURNITURE_DEFS: Record<string, FurnitureDef> = {
   bed:      { color: '#E8D5B7', w: 160, h: 200, label: '床' },

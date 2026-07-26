@@ -4,7 +4,7 @@
 
 import Konva from 'konva';
 import type { Door, Window, WallSegment } from '../engine/types';
-import { WALL_THICKNESS, HANDLE_RADIUS, MIN_DOOR_WIDTH, MAX_DOOR_WIDTH, MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH } from '../engine/constants';
+import { WALL_THICKNESS, HANDLE_RADIUS, MIN_DOOR_WIDTH, MAX_DOOR_WIDTH, MIN_WINDOW_WIDTH, MAX_WINDOW_WIDTH, DOOR_FILL, DOOR_ARC_FILL, DOOR_BODY_HEIGHT, WINDOW_FRAME_FILL, WINDOW_FRAME_HEIGHT } from '../engine/constants';
 import { getWallPos, pointToSegmentDist } from '../engine/geometry';
 
 /** 渲染门 */
@@ -32,48 +32,67 @@ export function renderDoor(
     name: 'door-' + door.id,
   });
 
-  // 门体
+  // 门体 — 使用 DOOR_FILL 颜色，高度大于墙厚以突出显示
   const doorRect = new Konva.Rect({
     x: -halfW,
-    y: -WALL_THICKNESS / 2,
+    y: -DOOR_BODY_HEIGHT / 2,
     width: door.width,
-    height: WALL_THICKNESS,
-    fill: '#8B7355',
-    stroke: '#6B5335',
-    strokeWidth: 1,
+    height: DOOR_BODY_HEIGHT,
+    fill: DOOR_FILL,
+    stroke: '#922B21',
+    strokeWidth: 2,
+    cornerRadius: 2,
     name: 'door-body',
   });
   group.add(doorRect);
 
-  // 铰链点
-  const hinge = new Konva.Circle({
+  // 门文字标签
+  const label = new Konva.Text({
     x: -halfW,
+    y: -6,
+    width: door.width,
+    height: 12,
+    text: '门',
+    fontSize: 10,
+    fontFamily: '"PingFang SC", "Microsoft YaHei", sans-serif',
+    fill: '#FFFFFF',
+    align: 'center',
+    verticalAlign: 'middle',
+    listening: false,
+    fontStyle: 'bold',
+  });
+  group.add(label);
+
+  // 铰链点 — 位置取决于 hingeSide
+  const hingeX = door.hingeSide === 'left' ? -halfW : halfW;
+  const hinge = new Konva.Circle({
+    x: hingeX,
     y: 0,
-    radius: 3,
-    fill: '#5D4E37',
-    stroke: '#fff',
-    strokeWidth: 1,
+    radius: 4,
+    fill: '#FFFFFF',
+    stroke: '#922B21',
+    strokeWidth: 2,
     name: 'door-hinge',
   });
   group.add(hinge);
 
-  // 门弧
+  // 门弧 — 使用 DOOR_ARC_FILL，位置取决于 hingeSide
   const arc = new Konva.Arc({
-    x: -halfW,
+    x: hingeX,
     y: 0,
     innerRadius: 0,
     outerRadius: door.width,
     angle: 90,
-    fill: 'rgba(139, 115, 85, 0.15)',
-    stroke: '#8B7355',
-    strokeWidth: 1,
+    fill: DOOR_ARC_FILL,
+    stroke: '#C0392B',
+    strokeWidth: 2,
     dash: [4, 3],
     name: 'door-arc',
   });
   group.add(arc);
 
-  // 设置弧方向
-  updateDoorArc(group, door.swingInward);
+  // 设置弧方向 (hingeSide + swingInward)
+  updateDoorArc(group, door.swingInward, door.hingeSide);
 
   // 事件
   group.on('click', () => onSelect(door.id));
@@ -88,14 +107,14 @@ export function renderDoor(
 }
 
 /** 更新门弧方向 */
-export function updateDoorArc(group: Konva.Group, swingInward: boolean): void {
+export function updateDoorArc(group: Konva.Group, swingInward: boolean, hingeSide: 'left' | 'right' = 'left'): void {
   const arc = group.findOne('.door-arc') as Konva.Arc | undefined;
   if (!arc) return;
-  if (swingInward) {
-    arc.rotation(0);
-  } else {
-    arc.rotation(180);
-  }
+  // 基础旋转: hingeSide 决定弧的朝向
+  let baseRotation = hingeSide === 'right' ? 180 : 0;
+  // swingInward: true=向内(0), false=向外(180)
+  let swingRotation = swingInward ? 0 : 180;
+  arc.rotation(baseRotation + swingRotation);
 }
 
 /** 渲染窗户 */
@@ -123,27 +142,27 @@ export function renderWindow(
     name: 'window-' + win.id,
   });
 
-  // 窗体外框
+  // 窗体外框 — 使用 WINDOW_FRAME_FILL，高度 WINDOW_FRAME_HEIGHT 以突出显示
   const frame = new Konva.Rect({
     x: -halfW,
-    y: -WALL_THICKNESS / 2 - 2,
+    y: -WINDOW_FRAME_HEIGHT / 2,
     width: win.width,
-    height: WALL_THICKNESS + 4,
-    fill: '#D6EAF8',
-    stroke: '#7f8c8d',
-    strokeWidth: 1,
-    cornerRadius: 1,
+    height: WINDOW_FRAME_HEIGHT,
+    fill: WINDOW_FRAME_FILL,
+    stroke: '#2980B9',
+    strokeWidth: 2,
+    cornerRadius: 2,
     name: 'window-frame',
   });
   group.add(frame);
 
-  // 3条水平线 (玻璃分隔)
+  // 3条竖线 (玻璃分隔) — 调整 y 范围匹配新高度
   for (let i = 1; i <= 3; i++) {
     const lineX = -halfW + (win.width / 4) * i;
     const line = new Konva.Line({
-      points: [lineX, -WALL_THICKNESS / 2 - 2, lineX, WALL_THICKNESS / 2 + 2],
-      stroke: '#A9CCE3',
-      strokeWidth: 0.8,
+      points: [lineX, -WINDOW_FRAME_HEIGHT / 2 + 2, lineX, WINDOW_FRAME_HEIGHT / 2 - 2],
+      stroke: '#2980B9',
+      strokeWidth: 1,
       name: 'window-line',
     });
     group.add(line);
@@ -205,11 +224,11 @@ export function renderDoorSelectionHandles(
   });
   overlayLayer.add(rh);
 
-  // 宽度标签
+  // 宽度标签 (位置调整到门上方，因为门现在更高了)
   const wM = door.width.toFixed(0);
   const wLabel = new Konva.Text({
     x: pos.x - 30,
-    y: pos.y - 25,
+    y: pos.y - 30,
     text: wM + 'cm',
     fontSize: 12,
     fontFamily: '"PingFang SC", "Microsoft YaHei", sans-serif',
