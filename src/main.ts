@@ -38,6 +38,8 @@ import { showPreviewGhost, hidePreviewGhost } from './renderer/previewLayer';
 import { setStatus, setStatusForTab, initShortcutHint } from './ui/statusBar';
 import { setActiveTab, initStepPanel } from './ui/stepPanel';
 import { initCanvasControls, computeRoomBounds } from './ui/canvasControls';
+import { renderStep1Panel, updateRoomInfo } from './ui/step1Room';
+import { renderStep2Panel, getSelectedFurniture } from './ui/step2Furniture';
 import './styles/main.css';
 
 // ============================================================
@@ -763,6 +765,30 @@ function loadTemplate(templateKey: string): void {
   triggerSave();
 }
 
+/** 加载模板 (直接传入宽高和家具列表) */
+function loadTemplateFull(width: number, height: number, furniture: Array<{ type: string; x: number; y: number }>): void {
+  clearAllFull();
+  state.wallPoints = createRoomFromDimensions(width, height);
+  state.isClosed = true;
+  state.hasEverHadRoom = true;
+  state.undoStack = [];
+  state.redoStack = [];
+  rebuildWallSegmentsFull();
+
+  for (const furn of furniture) {
+    placeFurnitureFull(furn.type, furn.x, furn.y);
+  }
+
+  const overlay = document.getElementById('template-overlay');
+  if (overlay) overlay.style.display = 'none';
+
+  wallLayer.batchDraw();
+  furnitureLayer.batchDraw();
+  updateRoomInfo();
+  setStatusForTab('room');
+  triggerSave();
+}
+
 // ============================================================
 //  初始化 v5.1
 // ============================================================
@@ -783,6 +809,66 @@ function init(): void {
 
   // 初始化快捷键提示
   initShortcutHint();
+
+  // ---- 渲染 Step 1 面板 (房间设置) ----
+  function createRoomFromCustomDims(w: number, h: number): void {
+    clearAllFull();
+    state.wallPoints = createRoomFromDimensions(w, h);
+    state.isClosed = true;
+    state.hasEverHadRoom = true;
+    state.undoStack = [];
+    state.redoStack = [];
+    rebuildWallSegmentsFull();
+    const overlay = document.getElementById('template-overlay');
+    if (overlay) overlay.style.display = 'none';
+    updateRoomInfo();
+    wallLayer.batchDraw();
+    setStatusForTab('room');
+    triggerSave();
+  }
+
+  renderStep1Panel(document.getElementById('panel-room')!, {
+    onLoadTemplate: (w, h, furniture) => loadTemplateFull(w, h, furniture),
+    onCreateRoom: (w, h) => createRoomFromCustomDims(w, h),
+    onClearAll: () => clearAllFull(),
+    onStartManualDraw: () => {
+      setStatus('点击画布放置墙点，点击起点闭合房间', 'drawing');
+    },
+    onPlaceDoor: () => {
+      state.placingElementType = 'door';
+      setStatus('点击墙面放置门 — Esc 退出', 'placing');
+    },
+    onPlaceWindow: () => {
+      state.placingElementType = 'window';
+      setStatus('点击墙面放置窗户 — Esc 退出', 'placing');
+    },
+  });
+
+  // ---- 渲染 Step 2 面板 (家具选择) ----
+  function layoutFromSelection(): void {
+    // 清除现有家具
+    furnitureLayer.destroyChildren();
+    state.furnitureItems = [];
+    // 根据选择数量创建家具
+    const selected = getSelectedFurniture();
+    for (const s of selected) {
+      const def = FURNITURE_DEFS[s.type];
+      if (!def) continue;
+      // 从房间中心开始放置，后续布局算法会调整
+      const cx = state.wallPoints.length > 0 ? state.wallPoints.reduce((a, b) => a + b.x, 0) / state.wallPoints.length : 300;
+      const cy = state.wallPoints.length > 0 ? state.wallPoints.reduce((a, b) => a + b.y, 0) / state.wallPoints.length : 300;
+      placeFurnitureFull(s.type, cx, cy);
+    }
+    if (state.furnitureItems.length > 0) {
+      runSmartLayoutFull();
+    }
+    setStatusForTab('layout');
+    triggerSave();
+  }
+
+  renderStep2Panel(document.getElementById('panel-furniture')!, {
+    onLayout: layoutFromSelection,
+  });
 
   // 模板浮层事件
   document.querySelectorAll('.template-card').forEach(card => {
