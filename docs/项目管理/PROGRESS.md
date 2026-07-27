@@ -32,7 +32,7 @@
 - [x] Vitest 单元测试：63 个用例，386ms 跑完
 - [x] Git 统一仓库 → GitHub (`NemoZhang11/home-design-lite`)
 - [x] CI/CD：GitHub Actions → gh-pages 自动部署
-- [x] 架构文档：[ARCHITECTURE.md](architecture/ARCHITECTURE.md)
+- [x] 架构文档：[ARCHITECTURE.md](../技术/ARCHITECTURE.md)
 
 ### Phase 0.6 — 上线准备 ✅
 
@@ -44,23 +44,26 @@
 
 ---
 
-### 文档结构（2026-07-26 重新组织）
+### 文档结构
 
 ```
 docs/
-├── README.md                         ← 入口导航 ← 新
-├── PROGRESS.md                       ← 项目进度（本文档）
-├── 产品需求和项目管理/                 ← 方案设计
+├── README.md                         ← 入口导航
+├── 产品设计/                          ← 产品方案与交互设计
 │   ├── 产品定位与路线图.md
 │   ├── 核心功能与交互流程.md
-│   └── 风险评估报告.md
-├── architecture/
-│   └── ARCHITECTURE.md               ← 技术架构
-└── 反馈与迭代/                        ← 使用反馈 ← 新
-    └── 反馈记录.md                    反馈汇总、bug跟踪、决策记录
+│   ├── 风险评估报告.md
+│   └── 交互设计方案.md
+├── 技术/                             ← 技术架构
+│   └── ARCHITECTURE.md
+├── 项目管理/                          ← 进度跟踪（本文档位置）
+│   ├── README.md                     ← 文档导航
+│   └── PROGRESS.md                   ← 本文档
+└── 反馈与迭代/                        ← 用户反馈与决策记录
+    └── 反馈记录.md
 ```
 
-**本文件建议**：定期进入会话时先看 `PROGRESS.md`（进度）和 `反馈与迭代/反馈记录.md`（反馈），再决定下一步。
+**本文件建议**：定期进入会话时先看本文件（进度）和 `../反馈与迭代/反馈记录.md`（反馈），再决定下一步。
 
 ---
 
