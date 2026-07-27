@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🏠 房间改造工具</title>
   <link rel="icon" type="image/svg+xml" href="/home-design-lite/favicon.svg" />
-  <script type="module" crossorigin src="/home-design-lite/assets/index-CTAPl4-P.js"></script>
+  <script type="module" crossorigin src="/home-design-lite/assets/index-BRKTJl2A.js"></script>
   <link rel="stylesheet" crossorigin href="/home-design-lite/assets/index-BbUUPscs.css">
 </head>
 <body>
@@ -124,6 +124,20 @@
               <button class="action-btn" id="btn-door-hinge" style="flex:1; font-size:11px; padding:4px;">铰链: 左</button>
               <button class="action-btn" id="btn-door-dir" style="flex:1; font-size:11px; padding:4px;">向内开</button>
             </div>
+          </div>
+
+          <!-- 窗户参数面板 -->
+          <div id="window-panel" style="display:none; padding:8px; background:#f0ece6; border-radius:8px; margin-top:4px;">
+            <div style="font-size:12px; margin-bottom:6px; color:#7f8c8d; font-weight:600;">窗户参数</div>
+            <div style="font-size:11px; color:#7f8c8d; margin-bottom:2px;">宽度 (cm)</div>
+            <input type="number" id="window-width-input" min="40" max="200" step="5" value="100"
+              style="width:100%; padding:4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px;">
+          </div>
+
+          <!-- 操作日志 -->
+          <div id="log-panel" style="margin-top:8px; padding:6px; background:#2c3e50; border-radius:6px; max-height:120px; overflow-y:auto;">
+            <div style="font-size:11px; color:#95a5a6; margin-bottom:4px; font-weight:600;">操作日志</div>
+            <div id="log-entries" style="font-size:10px; color:#ecf0f1; font-family:monospace; line-height:1.4;"></div>
           </div>
 
           <!-- 操作按钮 -->
