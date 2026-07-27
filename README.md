@@ -30,6 +30,19 @@ npm run dev
 npm test
 ```
 
+### ⚠️ Windows 本地开发注意
+
+`npm run dev` 启动的 Vite 开发服务器是**前台常驻进程**。如果在终端中直接运行，关闭终端窗口后服务会停止。推荐以下方式启动：
+
+**PowerShell（推荐）**：
+```powershell
+cd D:\home\家装布置\home-design-tool
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "npm run dev" -WindowStyle Minimized
+```
+这会在一个最小化的独立 PowerShell 窗口中运行 dev server，不受当前终端影响。打开 `http://localhost:3000/home-design-lite/` 访问。
+
+> **为什么需要这样**：Vite dev server 是长期运行的进程，不能放在有超时限制的终端里（如 IDE 内置终端、CI pipeline）。`Start-Process` 把它放到独立进程里，保证稳定运行。
+
 ---
 
 ## 文档体系

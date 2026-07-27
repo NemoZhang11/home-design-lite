@@ -173,3 +173,4 @@ src/engine/*test   4 files   ~500 行  单元测试
 | D06 | 上线前先加 localStorage 保存 | 防流失，优先级高于 LLM | 2026-07-27 |
 | D07 | Phase 2 启动门槛 | LLM ≥ 85% + 用户使用输入框，缺一不可 | 2026-07-27 |
 | D08 | 反馈改无需登录 | GitHub Issues 门槛太高，改为页面内嵌 | 2026-07-27 |
+| D09 | Windows dev server 启动方式 | 见 [README](../../README.md#⚠️-windows-本地开发注意)，必须用 Start-Process | 2026-07-27 |
