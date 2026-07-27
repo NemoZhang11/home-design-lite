@@ -1,11 +1,12 @@
 // ============================================================
-//  🏠 房间改造工具 — 主入口
+//  🏠 房间改造工具 — 主入口 v5.1
 //  技术栈: Konva.js · TypeScript · Vite
-//  模式: 画户型 | 放家具 | 智能布局
+//  结构: 4标签 (房间设置 | 选择家具 | 布局方案 | 微调)
 // ============================================================
 
 import Konva from 'konva';
-import { state, pushUndo, clearSelection, saveToStorage, loadFromStorage, clearStorage } from './state/store';
+import { state, pushUndo, popUndo, clearSelection, saveToStorage, loadFromStorage, clearStorage } from './state/store';
+import type { ActiveTab } from './state/store';
 import type { EditorMode, WallSegment, Point } from './engine/types';
 import {
   CANVAS_WIDTH, CANVAS_HEIGHT, WALL_COLOR, WALL_SELECTED_COLOR,
@@ -34,9 +35,9 @@ import {
   renderDoorSelectionHandles, renderWindowSelectionHandles,
 } from './renderer/doorLayer';
 import { showPreviewGhost, hidePreviewGhost } from './renderer/previewLayer';
-import { setStatus } from './ui/statusBar';
-import { bindToolbarEvents, updateUndoRedoButtons } from './ui/toolbar';
-import { bindSidebarEvents } from './ui/sidebar';
+import { setStatus, setStatusForTab, initShortcutHint } from './ui/statusBar';
+import { setActiveTab, initStepPanel } from './ui/stepPanel';
+import { initCanvasControls, computeRoomBounds } from './ui/canvasControls';
 import './styles/main.css';
 
 // ============================================================
@@ -45,8 +46,8 @@ import './styles/main.css';
 
 interface RoomTemplate {
   label: string;
-  width: number;   // cm
-  height: number;  // cm
+  width: number;
+  height: number;
   furniture: Array<{ type: string; x: number; y: number }>;
 }
 
@@ -106,16 +107,6 @@ function triggerSave(): void {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
     saveToStorage();
-    const statusText = document.getElementById('status-text');
-    if (statusText) {
-      statusText.textContent = '💾 已自动保存';
-      setTimeout(() => {
-        const text = document.getElementById('status-text');
-        if (text && text.textContent === '💾 已自动保存') {
-          // Flash indicator — will be overwritten by next user action
-        }
-      }, 1200);
-    }
   }, 500);
 }
 
@@ -130,7 +121,6 @@ const stage = new Konva.Stage({
   height: CANVAS_HEIGHT,
 });
 
-// 图层
 const gridLayer = new Konva.Layer();
 const wallLayer = new Konva.Layer();
 const furnitureLayer = new Konva.Layer();
@@ -147,15 +137,11 @@ stage.add(previewLayer);
 //  核心重建函数
 // ============================================================
 
-/** 重建所有墙段 (Konva) */
 function rebuildWallSegmentsFull(): void {
-  // 清除旧墙段
   wallLayer.destroyChildren();
-
   state.wallSegments = [];
   state.selectedWallId = null;
   clearSelection();
-  document.getElementById('door-panel')!.style.display = 'none';
   overlayLayer.destroyChildren();
 
   const pts = state.wallPoints;
@@ -164,28 +150,22 @@ function rebuildWallSegmentsFull(): void {
     return;
   }
 
-  // 重建墙段数据
   const segs = rebuildWallSegments(pts, state.isClosed, state.nextWallId);
   state.wallSegments = segs;
   state.nextWallId += segs.length;
 
-  // 渲染墙段
   for (const seg of segs) {
     renderSingleWallSegment(seg);
   }
 
-  // 绘制填充多边形
   if (state.isClosed && pts.length >= 3) {
     renderWallPolygon(wallLayer, pts);
   }
 
-  // 重绘门/窗
   rebuildDoorsAndWindowsFull();
-
   wallLayer.batchDraw();
 }
 
-/** 渲染单个墙段 */
 function renderSingleWallSegment(seg: WallSegment): void {
   const cx = (seg.p1.x + seg.p2.x) / 2;
   const cy = (seg.p1.y + seg.p2.y) / 2;
@@ -198,7 +178,6 @@ function renderSingleWallSegment(seg: WallSegment): void {
     name: 'wall-segment-' + seg.id,
   });
 
-  // 墙主体
   const rect = new Konva.Rect({
     x: -seg.length / 2,
     y: -WALL_THICKNESS / 2,
@@ -212,7 +191,6 @@ function renderSingleWallSegment(seg: WallSegment): void {
   });
   group.add(rect);
 
-  // 加宽隐形点击区域 — 便于门/窗放置点击
   const hitArea = new Konva.Rect({
     x: -seg.length / 2,
     y: -20,
@@ -227,87 +205,66 @@ function renderSingleWallSegment(seg: WallSegment): void {
   group.add(hitArea);
   hitArea.moveToBottom();
 
-  // 端点圆
   const end1 = new Konva.Circle({
-    x: -seg.length / 2,
-    y: 0,
-    radius: 3,
-    fill: '#2c3e50',
-    stroke: '#fff',
-    strokeWidth: 1.5,
+    x: -seg.length / 2, y: 0, radius: 3,
+    fill: '#2c3e50', stroke: '#fff', strokeWidth: 1.5,
     name: 'wall-endpoint',
   });
   group.add(end1);
 
   const end2 = new Konva.Circle({
-    x: seg.length / 2,
-    y: 0,
-    radius: 3,
-    fill: '#2c3e50',
-    stroke: '#fff',
-    strokeWidth: 1.5,
+    x: seg.length / 2, y: 0, radius: 3,
+    fill: '#2c3e50', stroke: '#fff', strokeWidth: 1.5,
     name: 'wall-endpoint',
   });
   group.add(end2);
 
   wallLayer.add(group);
-
-  // 保存 group 引用到 seg
   (seg as WallSegment & { group: Konva.Group }).group = group;
 
-  // ---- 墙段点击选中 ----
+  // 墙段点击选中
   rect.on('click', function() {
-    if (state.mode !== 'draw') return;
-    // 正在放置门/窗时不选中墙段，避免覆盖门窗创建逻辑
+    if (state.activeTab !== 'room') return;
     if (state.placingElementType) return;
     selectWallSegment(seg);
   });
 
-  // ---- 墙段拖拽 ----
+  // 墙段拖拽
   group.on('dragstart', function() {
-    if (state.mode !== 'draw') return;
+    if (state.activeTab !== 'room') return;
     selectWallSegment(seg);
   });
 
   group.on('dragmove', function() {
-    if (state.mode !== 'draw') return;
-    const gx = group.x();
-    const gy = group.y();
+    if (state.activeTab !== 'room') return;
+    const gx = group.x(); const gy = group.y();
     const expectedCx = (seg.p1.x + seg.p2.x) / 2;
     const expectedCy = (seg.p1.y + seg.p2.y) / 2;
-    const offsetX = gx - expectedCx;
-    const offsetY = gy - expectedCy;
-
-    seg.p1.x += offsetX;
-    seg.p1.y += offsetY;
-    seg.p2.x += offsetX;
-    seg.p2.y += offsetY;
-
+    const offsetX = gx - expectedCx; const offsetY = gy - expectedCy;
+    seg.p1.x += offsetX; seg.p1.y += offsetY;
+    seg.p2.x += offsetX; seg.p2.y += offsetY;
     state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
     syncConnectedSegments(seg, state.wallSegments);
-
     if (state.selectedWallId === seg.id) {
       updateSelectionHandlesPosition(seg, overlayLayer);
     }
-
     updateDoorsWindowsOnSegments();
   });
 
   group.on('dragend', function() {
-    if (state.mode !== 'draw') return;
+    if (state.activeTab !== 'room') return;
     snapSegmentEndpoints(seg);
     state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
     syncConnectedSegments(seg, state.wallSegments);
     rebuildWallSegmentsFull();
     pushUndo();
-    updateUndoRedoButtons();
     triggerSave();
   });
 
-  // ---- 右键删除墙段 ----
+  // 右键删除墙段
   group.on('contextmenu', function(e: Konva.KonvaEventObject<PointerEvent>) {
     e.evt.preventDefault();
-    if (state.mode !== 'draw') return;
+    if (state.activeTab !== 'room') return;
     if (state.wallPoints.length < 2) return;
     pushUndo();
     const segIdx = state.wallSegments.indexOf(seg);
@@ -320,12 +277,10 @@ function renderSingleWallSegment(seg: WallSegment): void {
       if (state.wallPoints.length < 3) state.isClosed = false;
     }
     rebuildWallSegmentsFull();
-    updateUndoRedoButtons();
     triggerSave();
   });
 }
 
-/** 选中墙段 */
 function selectWallSegment(seg: WallSegment): void {
   clearSelectionFull();
   state.selectedWallId = seg.id;
@@ -335,116 +290,25 @@ function selectWallSegment(seg: WallSegment): void {
 
   updateSelectionHandles(
     seg, overlayLayer, container, stage,
-    // onResizeP1
-    (x: number, y: number) => {
-      const snapped = { x: snapToGrid(x), y: snapToGrid(y) };
-      seg.p1.x = snapped.x;
-      seg.p1.y = snapped.y;
-      updateWallSegmentVisual(seg);
-      syncConnectedSegments(seg, state.wallSegments);
-      updateConnectedWallVisuals(seg, state.wallSegments);
-      updateDoorsWindowsOnSegments();
-      updateSelectionHandlesPosition(seg, overlayLayer);
-      wallLayer.batchDraw();
-    },
-    // onResizeP1End
-    () => {
-      state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
-      rebuildWallSegmentsFull();
-      const newSeg = state.wallSegments.find(s => s.id === seg.id);
-      if (newSeg) selectWallSegment(newSeg);
-      pushUndo();
-      updateUndoRedoButtons();
-      triggerSave();
-    },
-    // onResizeP2
-    (x: number, y: number) => {
-      const snapped = { x: snapToGrid(x), y: snapToGrid(y) };
-      seg.p2.x = snapped.x;
-      seg.p2.y = snapped.y;
-      updateWallSegmentVisual(seg);
-      syncConnectedSegments(seg, state.wallSegments);
-      updateConnectedWallVisuals(seg, state.wallSegments);
-      updateDoorsWindowsOnSegments();
-      updateSelectionHandlesPosition(seg, overlayLayer);
-      wallLayer.batchDraw();
-    },
-    // onResizeP2End
-    () => {
-      state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
-      rebuildWallSegmentsFull();
-      const newSeg = state.wallSegments.find(s => s.id === seg.id);
-      if (newSeg) selectWallSegment(newSeg);
-      pushUndo();
-      updateUndoRedoButtons();
-      triggerSave();
-    },
-    // onRotate
-    (newAngle: number) => {
-      const deg = Konva.Util.radToDeg(newAngle);
-      const snapped = Math.round(deg / 15) * 15;
-      const rad = Konva.Util.degToRad(snapped);
-      const cx = (seg.p1.x + seg.p2.x) / 2;
-      const cy = (seg.p1.y + seg.p2.y) / 2;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const half = seg.length / 2;
-      seg.p1.x = cx - half * cos;
-      seg.p1.y = cy - half * sin;
-      seg.p2.x = cx + half * cos;
-      seg.p2.y = cy + half * sin;
-      seg.angle = rad;
-      updateWallSegmentVisual(seg);
-      state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
-      syncConnectedSegments(seg, state.wallSegments);
-      updateConnectedWallVisuals(seg, state.wallSegments);
-      updateDoorsWindowsOnSegments();
-      updateSelectionHandlesPosition(seg, overlayLayer);
-      wallLayer.batchDraw();
-    },
-    // onRotateEnd
-    () => {
-      state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
-      rebuildWallSegmentsFull();
-      const newSeg = state.wallSegments.find(s => s.id === seg.id);
-      if (newSeg) selectWallSegment(newSeg);
-      pushUndo();
-      updateUndoRedoButtons();
-      triggerSave();
-    },
-    // onLengthChange
-    (newLen: number) => {
-      resizeWallSegmentGeom(seg, newLen);
-      state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed);
-      syncConnectedSegments(seg, state.wallSegments);
-      rebuildWallSegmentsFull();
-      const newSeg = state.wallSegments.find(s => s.id === seg.id);
-      if (newSeg) selectWallSegment(newSeg);
-      pushUndo();
-      updateUndoRedoButtons();
-      triggerSave();
-    }
+    (x, y) => { seg.p1.x = snapToGrid(x); seg.p1.y = snapToGrid(y); updateWallSegmentVisual(seg); syncConnectedSegments(seg, state.wallSegments); updateConnectedWallVisuals(seg, state.wallSegments); updateDoorsWindowsOnSegments(); updateSelectionHandlesPosition(seg, overlayLayer); wallLayer.batchDraw(); },
+    () => { state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed); rebuildWallSegmentsFull(); const ns = state.wallSegments.find(s => s.id === seg.id); if (ns) selectWallSegment(ns); pushUndo(); triggerSave(); },
+    (x, y) => { seg.p2.x = snapToGrid(x); seg.p2.y = snapToGrid(y); updateWallSegmentVisual(seg); syncConnectedSegments(seg, state.wallSegments); updateConnectedWallVisuals(seg, state.wallSegments); updateDoorsWindowsOnSegments(); updateSelectionHandlesPosition(seg, overlayLayer); wallLayer.batchDraw(); },
+    () => { state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed); rebuildWallSegmentsFull(); const ns = state.wallSegments.find(s => s.id === seg.id); if (ns) selectWallSegment(ns); pushUndo(); triggerSave(); },
+    (newAngle) => { const deg = Konva.Util.radToDeg(newAngle); const snapped = Math.round(deg / 15) * 15; const rad = Konva.Util.degToRad(snapped); const cx = (seg.p1.x + seg.p2.x) / 2; const cy = (seg.p1.y + seg.p2.y) / 2; const cos = Math.cos(rad); const sin = Math.sin(rad); const half = seg.length / 2; seg.p1.x = cx - half * cos; seg.p1.y = cy - half * sin; seg.p2.x = cx + half * cos; seg.p2.y = cy + half * sin; seg.angle = rad; updateWallSegmentVisual(seg); state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed); syncConnectedSegments(seg, state.wallSegments); updateConnectedWallVisuals(seg, state.wallSegments); updateDoorsWindowsOnSegments(); updateSelectionHandlesPosition(seg, overlayLayer); wallLayer.batchDraw(); },
+    () => { state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed); rebuildWallSegmentsFull(); const ns = state.wallSegments.find(s => s.id === seg.id); if (ns) selectWallSegment(ns); pushUndo(); triggerSave(); },
+    (newLen) => { resizeWallSegmentGeom(seg, newLen); state.wallPoints = updateWallPointsFromSegments(state.wallSegments, state.isClosed); syncConnectedSegments(seg, state.wallSegments); rebuildWallSegmentsFull(); const ns = state.wallSegments.find(s => s.id === seg.id); if (ns) selectWallSegment(ns); pushUndo(); triggerSave(); },
   );
-
   wallLayer.batchDraw();
-  log('选中墙段', { id: seg.id, length: seg.length });
 }
 
-/** 更新单个墙段视觉 (不重建) */
 function updateWallSegmentVisual(seg: WallSegment): void {
   const segWithGroup = seg as WallSegment & { group: Konva.Group };
   const group = segWithGroup.group;
   if (!group) return;
-  const cx = (seg.p1.x + seg.p2.x) / 2;
-  const cy = (seg.p1.y + seg.p2.y) / 2;
-  group.x(cx);
-  group.y(cy);
-  group.rotation(Konva.Util.radToDeg(seg.angle));
+  const cx = (seg.p1.x + seg.p2.x) / 2; const cy = (seg.p1.y + seg.p2.y) / 2;
+  group.x(cx); group.y(cy); group.rotation(Konva.Util.radToDeg(seg.angle));
   const rect = group.findOne('.wall-body') as Konva.Rect | undefined;
-  if (rect) {
-    rect.x(-seg.length / 2);
-    rect.width(seg.length);
-  }
+  if (rect) { rect.x(-seg.length / 2); rect.width(seg.length); }
   const endpoints = group.find('.wall-endpoint') as Konva.Circle[] | undefined;
   if (endpoints && endpoints.length >= 2) {
     endpoints[0]?.x(-seg.length / 2);
@@ -452,9 +316,7 @@ function updateWallSegmentVisual(seg: WallSegment): void {
   }
 }
 
-/** 清除选中 (完整版) */
 function clearSelectionFull(): void {
-  // 清除墙选中
   if (state.selectedWallId !== null) {
     const oldSeg = state.wallSegments.find(s => s.id === state.selectedWallId);
     if (oldSeg) {
@@ -464,8 +326,6 @@ function clearSelectionFull(): void {
     }
   }
   clearSelection();
-  document.getElementById('door-panel')!.style.display = 'none';
-  document.getElementById('window-panel')!.style.display = 'none';
   overlayLayer.destroyChildren();
   overlayLayer.batchDraw();
 }
@@ -474,35 +334,17 @@ function clearSelectionFull(): void {
 //  门/窗系统
 // ============================================================
 
-/** 创建门 (Konva) */
 function createDoorFull(wallIdx: number, t: number, width: number, swingInward: boolean, hingeSide: 'left' | 'right' = 'left'): void {
   const seg = state.wallSegments[wallIdx];
   if (!seg) return;
-
   const w = width || DOOR_DEFAULT_WIDTH;
-  const sw = swingInward !== undefined ? swingInward : true;
-  log('创建门', { wallIdx, t, width: w, swingInward: sw, hingeSide });
-
   const pos = getWallPos(wallIdx, t, state.wallSegments);
   if (!pos) return;
-
   const id = state.nextDoorId++;
-
-  const doorData = {
-    id,
-    wallIdx,
-    t,
-    width: w,
-    swingInward: sw,
-    hingeSide,
-    hingeX: pos.x,
-    hingeY: pos.y,
-  };
+  const doorData = { id, wallIdx, t, width: w, swingInward, hingeSide, hingeX: pos.x, hingeY: pos.y };
   state.doors.push(doorData);
 
-  // 渲染门
-  renderDoor(
-    doorData, seg, wallLayer,
+  renderDoor(doorData, seg, wallLayer,
     (did: number) => selectDoor(did),
     (did: number, gx: number, gy: number) => {
       const door = state.doors.find(d => d.id === did);
@@ -510,46 +352,25 @@ function createDoorFull(wallIdx: number, t: number, width: number, swingInward: 
       const result = findNearestWall(gx, gy, state.wallSegments);
       if (result && result.idx === wallIdx) {
         const newPos = getWallPos(wallIdx, result.t, state.wallSegments);
-        if (newPos) {
-          door.t = result.t;
-          door.hingeX = newPos.x;
-          door.hingeY = newPos.y;
-        }
+        if (newPos) { door.t = result.t; door.hingeX = newPos.x; door.hingeY = newPos.y; }
       }
     },
-    () => {
-      rebuildDoorsAndWindowsFull();
-    }
+    () => { rebuildDoorsAndWindowsFull(); }
   );
-
   wallLayer.batchDraw();
   triggerSave();
 }
 
-/** 创建窗户 (Konva) */
 function createWindowFull(wallIdx: number, t: number, width: number): void {
   const seg = state.wallSegments[wallIdx];
   if (!seg) return;
-
-  const w = width || WINDOW_DEFAULT_WIDTH;
-  log('创建窗户', { wallIdx, t, width: w });
-
   const pos = getWallPos(wallIdx, t, state.wallSegments);
   if (!pos) return;
-
   const id = state.nextWindowId++;
-
-  const winData = {
-    id,
-    wallIdx,
-    t,
-    width: w,
-  };
+  const winData = { id, wallIdx, t, width };
   state.windows.push(winData);
 
-  // 渲染窗户
-  renderWindow(
-    winData, seg, wallLayer,
+  renderWindow(winData, seg, wallLayer,
     (wid: number) => selectWindow(wid),
     (wid: number, gx: number, gy: number) => {
       const win = state.windows.find(w => w.id === wid);
@@ -557,114 +378,61 @@ function createWindowFull(wallIdx: number, t: number, width: number): void {
       const result = findNearestWall(gx, gy, state.wallSegments);
       if (result && result.idx === wallIdx) {
         const newPos = getWallPos(wallIdx, result.t, state.wallSegments);
-        if (newPos) {
-          win.t = result.t;
-        }
+        if (newPos) { win.t = result.t; }
       }
     },
-    () => {
-      rebuildDoorsAndWindowsFull();
-    }
+    () => { rebuildDoorsAndWindowsFull(); }
   );
-
   wallLayer.batchDraw();
   triggerSave();
 }
 
-/** 选中门 */
 function selectDoor(id: number): void {
   clearSelectionFull();
   const door = state.doors.find(d => d.id === id);
   if (!door) return;
   state.selectedElementId = id;
   state.selectedElementType = 'door';
-  log('选中门', { id, swingInward: door.swingInward, hingeSide: door.hingeSide });
-
-  // 显示门参数面板
-  const panel = document.getElementById('door-panel')!;
-  panel.style.display = 'block';
-
-  // 宽度输入
-  const widthInput = document.getElementById('door-width-input') as HTMLInputElement;
-  widthInput.value = String(door.width);
-
-  // 铰链侧按钮
-  const hingeBtn = document.getElementById('btn-door-hinge')!;
-  hingeBtn.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
-
-  // 开门方向按钮
-  const dirBtn = document.getElementById('btn-door-dir')!;
-  dirBtn.textContent = door.swingInward ? '向内开' : '向外开';
 
   renderDoorSelectionHandles(door, state.wallSegments, overlayLayer, (newWidth: number) => {
     door.width = newWidth;
     rebuildDoorsAndWindowsFull();
     selectDoor(id);
   });
-
   wallLayer.batchDraw();
 }
 
-/** 选中窗户 */
 function selectWindow(id: number): void {
   clearSelectionFull();
   const win = state.windows.find(w => w.id === id);
   if (!win) return;
   state.selectedElementId = id;
   state.selectedElementType = 'window';
-  log('选中窗户', { id });
-
-  // 显示窗户参数面板
-  const panel = document.getElementById('window-panel')!;
-  panel.style.display = 'block';
-
-  // 宽度输入
-  const widthInput = document.getElementById('window-width-input') as HTMLInputElement;
-  widthInput.value = String(win.width);
 
   renderWindowSelectionHandles(win, state.wallSegments, overlayLayer, (newWidth: number) => {
     win.width = newWidth;
     rebuildDoorsAndWindowsFull();
     selectWindow(id);
   });
-
   wallLayer.batchDraw();
 }
 
-/** 重建门/窗 (在墙段重建后调用) */
 function rebuildDoorsAndWindowsFull(): void {
   if (state._rebuildingDoorsWindows) return;
   state._rebuildingDoorsWindows = true;
-
-  // 保存门/窗数据
-  const { doors: doorData, windows: winData } = rebuildDoorsAndWindowsData(
-    state.doors, state.windows, state.wallSegments
-  );
-
-  // 销毁旧门/窗 (Konva groups)
+  const { doors: doorData, windows: winData } = rebuildDoorsAndWindowsData(state.doors, state.windows, state.wallSegments);
   wallLayer.find('Group').forEach(g => {
     const name = g.name();
-    if (name && (name.startsWith('door-') || name.startsWith('window-'))) {
-      g.destroy();
-    }
+    if (name && (name.startsWith('door-') || name.startsWith('window-'))) g.destroy();
   });
   state.doors = [];
   state.windows = [];
-
-  // 重新创建门/窗
-  for (const dd of doorData) {
-    createDoorFull(dd.wallIdx, dd.t, dd.width, dd.swingInward, dd.hingeSide);
-  }
-  for (const wd of winData) {
-    createWindowFull(wd.wallIdx, wd.t, wd.width);
-  }
-
+  for (const dd of doorData) createDoorFull(dd.wallIdx, dd.t, dd.width, dd.swingInward, dd.hingeSide);
+  for (const wd of winData) createWindowFull(wd.wallIdx, wd.t, wd.width);
   state._rebuildingDoorsWindows = false;
 }
 
-/** 更新门/窗位置 (墙段移动后) */
 function updateDoorsWindowsOnSegments(): void {
-  // Find door/window groups and update their positions
   wallLayer.find('Group').forEach(g => {
     const name = g.name();
     if (name && name.startsWith('door-')) {
@@ -674,11 +442,7 @@ function updateDoorsWindowsOnSegments(): void {
       const seg = state.wallSegments[door.wallIdx];
       if (!seg) return;
       const pos = getWallPos(door.wallIdx, door.t, state.wallSegments);
-      if (pos) {
-        g.x(pos.x);
-        g.y(pos.y);
-        g.rotation(Konva.Util.radToDeg(seg.angle));
-      }
+      if (pos) { g.x(pos.x); g.y(pos.y); g.rotation(Konva.Util.radToDeg(seg.angle)); }
     }
     if (name && name.startsWith('window-')) {
       const id = parseInt(name.replace('window-', ''), 10);
@@ -687,11 +451,7 @@ function updateDoorsWindowsOnSegments(): void {
       const seg = state.wallSegments[win.wallIdx];
       if (!seg) return;
       const pos = getWallPos(win.wallIdx, win.t, state.wallSegments);
-      if (pos) {
-        g.x(pos.x);
-        g.y(pos.y);
-        g.rotation(Konva.Util.radToDeg(seg.angle));
-      }
+      if (pos) { g.x(pos.x); g.y(pos.y); g.rotation(Konva.Util.radToDeg(seg.angle)); }
     }
   });
 }
@@ -700,17 +460,10 @@ function updateDoorsWindowsOnSegments(): void {
 //  家具系统
 // ============================================================
 
-/** 移除家具 */
 function removeFurniture(group: Konva.Group): void {
-  const idx = state.furnitureItems.findIndex(f => {
-    // Match by checking if the group is the same
-    return false; // We'll use a different approach
-  });
-  // Find by iterating
   for (let i = 0; i < state.furnitureItems.length; i++) {
     const item = state.furnitureItems[i];
     if (item && item.type === group.name().replace('furniture-', '')) {
-      // Check position match
       if (Math.abs(item.x - group.x()) < 1 && Math.abs(item.y - group.y()) < 1) {
         state.furnitureItems.splice(i, 1);
         break;
@@ -719,17 +472,14 @@ function removeFurniture(group: Konva.Group): void {
   }
   group.destroy();
   furnitureLayer.batchDraw();
-  log('移除家具');
   triggerSave();
 }
 
-/** 放置家具 */
 function placeFurnitureFull(type: string, x: number, y: number, rotation?: number): void {
   const group = renderPlaceFurniture(furnitureLayer, type, x, y, rotation || 0, stage, removeFurniture);
   if (!group) return;
   state.furnitureItems.push({ type, x: group.x(), y: group.y(), rotation: rotation || 0 });
   furnitureLayer.batchDraw();
-  log('放置家具', { type, x, y });
   triggerSave();
 }
 
@@ -738,41 +488,29 @@ function placeFurnitureFull(type: string, x: number, y: number, rotation?: numbe
 // ============================================================
 
 function runSmartLayoutFull(): void {
-  log('智能布局开始', { furniture: state.furnitureItems.length });
   if (state.wallPoints.length < 3) {
     setStatus('⚠️ 请先绘制房间墙线再运行智能布局', 'idle');
     return;
   }
-
   const results = runSmartLayout(state.wallPoints, state.furnitureItems);
-
   for (let i = 0; i < results.length; i++) {
     const item = state.furnitureItems[i];
     const result = results[i];
     if (!item || !result) continue;
-
-    // Find the Konva group for this furniture item
     furnitureLayer.find('Group').forEach(g => {
       const name = g.name();
       if (name && name === 'furniture-' + item.type) {
-        // Check if this is the right one by position proximity
         if (Math.abs(g.x() - item.x) < 5 && Math.abs(g.y() - item.y) < 5) {
           new Konva.Tween({
-            node: g,
-            duration: 0.3,
-            x: result.x,
-            y: result.y,
+            node: g, duration: 0.3, x: result.x, y: result.y,
             easing: Konva.Easings.EaseOut,
           }).play();
         }
       }
     });
-
     item.x = result.x;
     item.y = result.y;
   }
-
-  log('智能布局完成', { items: state.furnitureItems.length });
   setStatus('✨ 智能布局完成！家具已沿墙排列', 'success');
   triggerSave();
 }
@@ -782,27 +520,19 @@ function runSmartLayoutFull(): void {
 // ============================================================
 
 function clearAllFull(): void {
-  if (!confirm('确定要清除全部内容吗？')) return;
-  log('清除全部');
-
   state.wallPoints = [];
   state.wallSegments = [];
   state.isClosed = false;
   state.undoStack = [];
   state.redoStack = [];
-
   state.doors = [];
   state.windows = [];
-
   state.furnitureItems = [];
-
   state.selectedWallId = null;
   state.selectedElementId = null;
   state.selectedElementType = null;
   state.placingElementType = null;
-  document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
-  document.getElementById('door-panel')!.style.display = 'none';
-  document.getElementById('window-panel')!.style.display = 'none';
+  state.furnitureQuantities = { bed: 0, desk: 0, wardrobe: 0, chair: 0, sofa: 0 };
 
   wallLayer.destroyChildren();
   furnitureLayer.destroyChildren();
@@ -811,48 +541,14 @@ function clearAllFull(): void {
 
   wallLayer.batchDraw();
   furnitureLayer.batchDraw();
-  updateUndoRedoButtons();
   clearStorage();
-  setStatus('已清除全部 — 点击画布开始绘制墙线', 'idle');
-}
 
-// ============================================================
-//  模式切换
-// ============================================================
+  // 恢复模板浮层
+  const overlay = document.getElementById('template-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  state.hasEverHadRoom = false;
 
-function setMode(mode: EditorMode): void {
-  log('模式切换 → ' + mode);
-  state.mode = mode;
-
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
-  });
-
-  const catalog = document.getElementById('furniture-catalog')!;
-  catalog.classList.toggle('visible', mode === 'place');
-
-  const layoutBtn = document.getElementById('btn-layout')!;
-  layoutBtn.style.display = mode === 'layout' ? 'block' : 'none';
-
-  const containerEl = stage.container();
-  if (mode === 'draw') {
-    containerEl.style.cursor = 'crosshair';
-    setStatus('画户型模式 — 点击画布放置墙点，点击起点闭合房间', 'drawing');
-  } else if (mode === 'place') {
-    containerEl.style.cursor = 'default';
-    setStatus('放家具模式 — 从左侧目录拖拽或点击放置家具', 'placing');
-  } else {
-    containerEl.style.cursor = 'default';
-    setStatus('智能布局模式 — 点击「智能布局」按钮运行算法', 'idle');
-    // Run smart layout immediately when switching to layout mode
-    runSmartLayoutFull();
-  }
-
-  // Update furniture draggability
-  furnitureLayer.find('Group').forEach(g => {
-    g.draggable(mode === 'place');
-  });
-  triggerSave();
+  setStatus('已清除全部 — 选择一个模板开始', 'idle');
 }
 
 // ============================================================
@@ -861,12 +557,9 @@ function setMode(mode: EditorMode): void {
 
 function addWallPoint(x: number, y: number): void {
   if (state.isClosed) return;
-
-  const sx = snapToGrid(x);
-  const sy = snapToGrid(y);
+  const sx = snapToGrid(x); const sy = snapToGrid(y);
   const newPt = { x: sx, y: sy };
 
-  // 检查是否点击了第一个点 (闭合)
   if (state.wallPoints.length >= 3) {
     const first = state.wallPoints[0];
     if (first && dist(newPt, first) < WALL_CLOSE_RADIUS) {
@@ -874,102 +567,83 @@ function addWallPoint(x: number, y: number): void {
       state.isClosed = true;
       state.wallPoints.push({ x: first.x, y: first.y });
       rebuildWallSegmentsFull();
-      log('房间已闭合', { walls: state.wallSegments.length });
-      setStatus('✅ 房间已闭合！切换到「放家具」模式添加家具', 'success');
+      state.hasEverHadRoom = true;
+      // 隐藏模板浮层
+      const overlay = document.getElementById('template-overlay');
+      if (overlay) overlay.style.display = 'none';
+      setStatusForTab('room');
       triggerSave();
       return;
     }
   }
-
   pushUndo();
   state.wallPoints.push(newPt);
-  log('添加墙点', { x: sx, y: sy, total: state.wallPoints.length });
   rebuildWallSegmentsFull();
-  updateUndoRedoButtons();
   triggerSave();
 }
 
 // ============================================================
-//  事件绑定
+//  画布事件绑定
 // ============================================================
 
-// ---- 画布点击 ----
 stage.on('click', function(e) {
   const targetName = e.target.name();
-  if (targetName === 'rot-handle' || targetName === 'del-handle' ||
-      targetName === 'resize-handle' || targetName === 'door-resize' ||
-      targetName === 'win-resize') return;
-
+  if (targetName === 'rot-handle' || targetName === 'del-handle' || targetName === 'resize-handle' || targetName === 'door-resize' || targetName === 'win-resize') return;
   const pos = stage.getPointerPosition();
   if (!pos) return;
 
-  // 如果点击的是已有的门/窗，让它们自己的事件处理（避免在放置模式下重复放置）
-  if (state.placingElementType && (
-    targetName === 'door-body' || targetName === 'door-hinge' || targetName === 'door-arc' ||
-    targetName === 'window-frame' || targetName === 'window-line'
-  )) {
-    return;
-  }
-
-  // 如果正在放置门/窗，优先处理
-  if (state.mode === 'draw' && state.placingElementType) {
+  // 放置门/窗
+  if (state.activeTab === 'room' && state.placingElementType) {
     if (state.placingElementType === 'door') {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
       if (result && result.dist < 40) {
+        pushUndo();
         createDoorFull(result.idx, result.t, DOOR_DEFAULT_WIDTH, true, 'left');
-        // 单次放置模式：放置后自动选中门并退出放置
         const lastDoor = state.doors[state.doors.length - 1];
         if (lastDoor) selectDoor(lastDoor.id);
         state.placingElementType = null;
-        document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
         hidePreviewGhost(previewLayer);
-        setStatus('门已放置 — 双击可调参数', 'success');
-        log('门已放置', { wallIdx: result.idx, t: result.t });
+        setStatusForTab('room');
       }
       return;
     }
     if (state.placingElementType === 'window') {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
       if (result && result.dist < 40) {
+        pushUndo();
         createWindowFull(result.idx, result.t, WINDOW_DEFAULT_WIDTH);
-        // 单次放置模式：放置后自动选中窗并退出放置
         const lastWin = state.windows[state.windows.length - 1];
         if (lastWin) selectWindow(lastWin.id);
         state.placingElementType = null;
-        document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
         hidePreviewGhost(previewLayer);
-        setStatus('窗户已放置 — 双击可调参数', 'success');
-        log('窗户已放置', { wallIdx: result.idx, t: result.t });
+        setStatusForTab('room');
       }
       return;
     }
     return;
   }
 
-  // 如果点击的是墙段、门、窗，让它们自己的事件处理
-  if (targetName === 'wall-body' || targetName === 'wall-endpoint' ||
-      targetName === 'wall-hit-area' ||
-      targetName === 'door-body' || targetName === 'door-hinge' ||
-      targetName === 'door-arc' || targetName === 'window-frame' ||
-      targetName === 'window-line') return;
+  // 不处理墙/门/窗自身的点击
+  if (targetName === 'wall-body' || targetName === 'wall-endpoint' || targetName === 'wall-hit-area' ||
+      targetName === 'door-body' || targetName === 'door-hinge' || targetName === 'door-arc' ||
+      targetName === 'window-frame' || targetName === 'window-line') return;
 
-  if (state.mode === 'draw') {
+  if (state.activeTab === 'room') {
     addWallPoint(pos.x, pos.y);
   } else if (state.mode === 'place' && state.dragFurnitureType) {
     placeFurnitureFull(state.dragFurnitureType, pos.x, pos.y);
     state.dragFurnitureType = null;
-    setStatus('放家具模式 — 从左侧目录拖拽或点击放置家具', 'placing');
   } else {
     clearSelectionFull();
     wallLayer.batchDraw();
   }
 });
 
-// ---- 门/窗预览幽灵 (mousemove) ----
+// 幽灵预览
 stage.on('mousemove', function() {
   hidePreviewGhost(previewLayer);
-  if (!state.placingElementType || state.mode !== 'draw') return;
-
+  if (!state.placingElementType || state.activeTab !== 'room') return;
+  if (state.placingElementType === 'furniture') return; // furniture ghost handled separately
   const pos = stage.getPointerPosition();
   if (!pos) return;
   const result = findNearestWall(pos.x, pos.y, state.wallSegments);
@@ -980,20 +654,15 @@ stage.on('mousemove', function() {
   }
 });
 
-// ---- 画布接收拖拽 ----
-stage.on('dragover', function(e: Konva.KonvaEventObject<DragEvent>) {
-  e.evt.preventDefault();
-});
-
+// 拖放
+stage.on('dragover', function(e: Konva.KonvaEventObject<DragEvent>) { e.evt.preventDefault(); });
 stage.on('drop', function(e: Konva.KonvaEventObject<DragEvent>) {
   e.evt.preventDefault();
   if (state.mode !== 'place') return;
   const type = e.evt.dataTransfer?.getData('text/plain');
   if (type && FURNITURE_DEFS[type]) {
     const pos = stage.getPointerPosition();
-    if (pos) {
-      placeFurnitureFull(type, pos.x, pos.y);
-    }
+    if (pos) placeFurnitureFull(type, pos.x, pos.y);
   }
 });
 
@@ -1001,65 +670,40 @@ stage.on('drop', function(e: Konva.KonvaEventObject<DragEvent>) {
 document.addEventListener('keydown', function(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
     e.preventDefault();
-    if (state.mode === 'draw') {
-      // Trigger undo via custom event
-      const undoBtn = document.getElementById('btn-undo');
-      if (undoBtn) undoBtn.click();
+    const snapshot = popUndo();
+    if (snapshot) {
+      state.wallPoints = snapshot.wallPoints;
+      state.isClosed = snapshot.isClosed;
+      state.doors = snapshot.doors;
+      state.windows = snapshot.windows;
+      state.furnitureItems = snapshot.furnitureItems;
+      rebuildWallSegmentsFull();
+      furnitureLayer.destroyChildren();
+      for (const item of state.furnitureItems) {
+        renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+      }
+      furnitureLayer.batchDraw();
+      setStatus('已撤销', 'idle');
+      triggerSave();
     }
   }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
     e.preventDefault();
-    if (state.mode === 'draw') {
-      const redoBtn = document.getElementById('btn-redo');
-      if (redoBtn) redoBtn.click();
-    }
+    // TODO: redo via popRedo — same pattern as undo
   }
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    // 删除选中的墙段
-    if (state.mode === 'draw' && state.selectedWallId !== null && state.selectedElementId === null) {
-      const seg = state.wallSegments.find(s => s.id === state.selectedWallId);
-      if (seg && state.wallPoints.length >= 2) {
-        pushUndo();
-        const segIdx = state.wallSegments.indexOf(seg);
-        if (segIdx !== -1) {
-          const ptIdx = (segIdx + 1) % state.wallPoints.length;
-          if (state.isClosed && state.wallPoints.length <= 3) {
-            state.isClosed = false;
-          }
-          state.wallPoints.splice(ptIdx, 1);
-          if (state.wallPoints.length < 3) state.isClosed = false;
-        }
-        rebuildWallSegmentsFull();
-        updateUndoRedoButtons();
-        triggerSave();
-        return;
-      }
-    }
-    // 删除选中的门/窗
-    if (state.mode === 'draw' && state.selectedElementId !== null) {
+    if (state.activeTab === 'room' && state.selectedElementId !== null) {
+      pushUndo();
       if (state.selectedElementType === 'door') {
         const door = state.doors.find(d => d.id === state.selectedElementId);
-        if (door) {
-          state.doors = state.doors.filter(d => d.id !== door.id);
-          clearSelectionFull();
-          rebuildDoorsAndWindowsFull();
-          triggerSave();
-          return;
-        }
+        if (door) { state.doors = state.doors.filter(d => d.id !== door.id); clearSelectionFull(); rebuildDoorsAndWindowsFull(); triggerSave(); return; }
       }
       if (state.selectedElementType === 'window') {
         const win = state.windows.find(w => w.id === state.selectedElementId);
-        if (win) {
-          state.windows = state.windows.filter(w => w.id !== win.id);
-          clearSelectionFull();
-          rebuildDoorsAndWindowsFull();
-          triggerSave();
-          return;
-        }
+        if (win) { state.windows = state.windows.filter(w => w.id !== win.id); clearSelectionFull(); rebuildDoorsAndWindowsFull(); triggerSave(); return; }
       }
     }
-    // 删除选中的家具
-    if (state.mode === 'place') {
+    if (state.activeTab === 'adjust') {
       const selected = (furnitureLayer.find('Group') as Konva.Group[]).filter(g => {
         const rect = g.findOne('Rect') as Konva.Rect | undefined;
         return rect && rect.stroke() === '#3498db';
@@ -1072,310 +716,164 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
     if (state.placingElementType) {
       state.placingElementType = null;
       hidePreviewGhost(previewLayer);
-      document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
-      setStatus('退出放置模式', 'idle');
+      setStatusForTab(state.activeTab);
     } else {
       clearSelectionFull();
       wallLayer.batchDraw();
-      setStatus('放家具模式 — 从左侧目录拖拽或点击放置家具', 'placing');
     }
   }
 });
 
-// ---- 窗口级 Escape 监听 ----
 window.addEventListener('keydown', function(e: KeyboardEvent) {
   if (e.key === 'Escape' && state.placingElementType) {
     state.placingElementType = null;
     hidePreviewGhost(previewLayer);
-    document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
-    setStatus('退出放置模式', 'idle');
+    setStatusForTab(state.activeTab);
   }
 });
 
-// ---- 滚轮缩放 ----
-stage.on('wheel', function(e: Konva.KonvaEventObject<WheelEvent>) {
-  e.evt.preventDefault();
-  const oldScale = stage.scaleX();
-  const pointer = stage.getPointerPosition();
-  if (!pointer) return;
-  const mousePointTo = {
-    x: (pointer.x - stage.x()) / oldScale,
-    y: (pointer.y - stage.y()) / oldScale,
-  };
+// ============================================================
+//  模板加载
+// ============================================================
 
-  let newScale = e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1;
-  newScale = Math.max(0.3, Math.min(3, newScale));
+function loadTemplate(templateKey: string): void {
+  if (!confirm('当前房间将被替换，确定吗？')) return;
+  const tmpl = ROOM_TEMPLATES[templateKey];
+  if (!tmpl) return;
 
-  stage.scale({ x: newScale, y: newScale });
-  stage.position({
-    x: pointer.x - mousePointTo.x * newScale,
-    y: pointer.y - mousePointTo.y * newScale,
-  });
-  stage.batchDraw();
-});
-
-// ---- 监听 wall-changed 事件 (用于撤销/重做) ----
-document.addEventListener('wall-changed', function() {
+  clearAllFull();
+  state.wallPoints = createRoomFromDimensions(tmpl.width, tmpl.height);
+  state.isClosed = true;
+  state.hasEverHadRoom = true;
+  state.undoStack = [];
+  state.redoStack = [];
   rebuildWallSegmentsFull();
-  updateUndoRedoButtons();
-  triggerSave();
-});
 
-// ---- 监听 door-changed 事件 (用于门方向切换) ----
-document.addEventListener('door-changed', function() {
-  const id = state.selectedElementId;
-  if (id === null || state.selectedElementType !== 'door') return;
-  rebuildDoorsAndWindowsFull();
-  selectDoor(id);
-  triggerSave();
-});
-
-// ---- 监听 element-dblclick 事件 (双击门/窗选中) ----
-document.addEventListener('element-dblclick', function(e: Event) {
-  const detail = (e as CustomEvent).detail;
-  if (detail.type === 'door') {
-    selectDoor(detail.id);
-  } else if (detail.type === 'window') {
-    selectWindow(detail.id);
+  for (const furn of tmpl.furniture) {
+    placeFurnitureFull(furn.type, furn.x, furn.y);
   }
-});
 
-// ============================================================
-//  绑定 UI 事件
-// ============================================================
+  // 隐藏模板浮层
+  const overlay = document.getElementById('template-overlay');
+  if (overlay) overlay.style.display = 'none';
 
-bindToolbarEvents({
-  onSetMode: setMode,
-  onRebuildWalls: rebuildWallSegmentsFull,
-  onClearAll: clearAllFull,
-  onDrawGrid: () => drawGrid(gridLayer, state.showGrid),
-  onUpdateUndoRedo: updateUndoRedoButtons,
-});
-
-bindSidebarEvents({
-  onPlaceDoor: (wallIdx: number, t: number) => createDoorFull(wallIdx, t, DOOR_DEFAULT_WIDTH, true, 'left'),
-  onPlaceWindow: (wallIdx: number, t: number) => createWindowFull(wallIdx, t, WINDOW_DEFAULT_WIDTH),
-  onPlaceFurniture: (type: string, x: number, y: number) => placeFurnitureFull(type, x, y),
-  onStartDragFromCatalog: (type: string) => {
-    state.dragFurnitureType = type;
-  },
-});
-
-// ---- 门参数面板事件 ----
-document.getElementById('btn-door-hinge')!.addEventListener('click', function() {
-  const id = state.selectedElementId;
-  if (id === null || state.selectedElementType !== 'door') return;
-  const door = state.doors.find(d => d.id === id);
-  if (!door) return;
-  door.hingeSide = door.hingeSide === 'left' ? 'right' : 'left';
-  this.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
-  rebuildDoorsAndWindowsFull();
-  selectDoor(id);
+  wallLayer.batchDraw();
+  furnitureLayer.batchDraw();
+  setStatusForTab('room');
   triggerSave();
-});
+}
 
-// ---- 门宽输入 (防抖：打字时不重建，300ms无输入后生效) ----
-let _doorWidthTimer: ReturnType<typeof setTimeout> | null = null;
-document.getElementById('door-width-input')!.addEventListener('input', function() {
-  const id = state.selectedElementId;
-  if (id === null || state.selectedElementType !== 'door') return;
-  const door = state.doors.find(d => d.id === id);
-  if (!door) return;
-  const input = this as HTMLInputElement;
+// ============================================================
+//  初始化 v5.1
+// ============================================================
 
-  if (_doorWidthTimer) clearTimeout(_doorWidthTimer);
-  _doorWidthTimer = setTimeout(() => {
-    let val = parseInt(input.value, 10);
-    if (isNaN(val)) val = DOOR_DEFAULT_WIDTH;
-    val = Math.max(MIN_DOOR_WIDTH, Math.min(MAX_DOOR_WIDTH, val));
-    input.value = String(val);
-    door.width = val;
+function init(): void {
+  drawGrid(gridLayer, state.showGrid);
+
+  // 初始化标签面板
+  initStepPanel();
+
+  // 初始化画布控件
+  initCanvasControls({
+    stage, container: stage.container(),
+    zoomLabel: document.getElementById('zoom-label')!,
+    fitBtn: document.getElementById('btn-fit-canvas')!,
+    getRoomBounds: () => state.isClosed ? computeRoomBounds(state.wallPoints) : null,
+  });
+
+  // 初始化快捷键提示
+  initShortcutHint();
+
+  // 模板浮层事件
+  document.querySelectorAll('.template-card').forEach(card => {
+    card.addEventListener('click', function(this: HTMLElement) {
+      const tmpl = this.dataset.template;
+      if (tmpl) loadTemplate(tmpl);
+    });
+  });
+
+  // 导出按钮
+  document.getElementById('btn-export')!.addEventListener('click', () => {
+    document.getElementById('modal-export')!.style.display = 'flex';
+  });
+  document.getElementById('btn-export-cancel')!.addEventListener('click', () => {
+    document.getElementById('modal-export')!.style.display = 'none';
+  });
+  document.getElementById('btn-export-png')!.addEventListener('click', () => {
+    const dataURL = stage.toDataURL({ pixelRatio: 2 });
+    const link = document.createElement('a');
+    link.download = '房间布局.png';
+    link.href = dataURL;
+    link.click();
+    document.getElementById('modal-export')!.style.display = 'none';
+  });
+
+  // 上下文菜单
+  const ctxMenu = document.getElementById('context-menu')!;
+  document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+  ctxMenu.addEventListener('click', function(e: Event) {
+    const target = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
+    if (!target) return;
+    // TODO: wire actions in Wave 4
+    ctxMenu.style.display = 'none';
+  });
+
+  // 尝试加载 localStorage
+  const saved = loadFromStorage();
+  if (saved) {
+    state.wallPoints = saved.wallPoints;
+    state.isClosed = saved.isClosed;
+    state.doors = saved.doors || [];
+    state.windows = saved.windows || [];
+    state.furnitureItems = saved.furnitureItems || [];
+    state.mode = saved.mode;
+    state.showGrid = saved.showGrid;
+    state.nextWallId = saved.nextWallId;
+    state.nextDoorId = saved.nextDoorId;
+    state.nextWindowId = saved.nextWindowId;
+    state.activeTab = saved.activeTab || 'room';
+    state.hasEverHadRoom = saved.hasEverHadRoom || false;
+    state.furnitureQuantities = saved.furnitureQuantities || { bed: 0, desk: 0, wardrobe: 0, chair: 0, sofa: 0 };
+
+    if (state.isClosed && state.wallPoints.length >= 3) {
+      const overlay = document.getElementById('template-overlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    rebuildWallSegmentsFull();
+    for (const item of state.furnitureItems) {
+      renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+    }
+    furnitureLayer.batchDraw();
+    drawGrid(gridLayer, state.showGrid);
+
+    setActiveTab(state.activeTab);
+    setStatusForTab(state.activeTab);
+  } else {
+    setActiveTab('room');
+    // 首次打开 — 显示模板浮层
+    const overlay = document.getElementById('template-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    setStatusForTab('room');
+  }
+
+  // 门/窗 dblclick 事件
+  document.addEventListener('element-dblclick', function(e: Event) {
+    const detail = (e as CustomEvent).detail;
+    if (detail.type === 'door') selectDoor(detail.id);
+    else if (detail.type === 'window') selectWindow(detail.id);
+  });
+
+  // 门方向改变
+  document.addEventListener('door-changed', function() {
+    const id = state.selectedElementId;
+    if (id === null || state.selectedElementType !== 'door') return;
     rebuildDoorsAndWindowsFull();
     selectDoor(id);
     triggerSave();
-  }, 300);
-});
-
-// ---- 窗宽输入 (防抖) ----
-let _winWidthTimer: ReturnType<typeof setTimeout> | null = null;
-document.getElementById('window-width-input')!.addEventListener('input', function() {
-  const id = state.selectedElementId;
-  if (id === null || state.selectedElementType !== 'window') return;
-  const win = state.windows.find(w => w.id === id);
-  if (!win) return;
-  const input = this as HTMLInputElement;
-
-  if (_winWidthTimer) clearTimeout(_winWidthTimer);
-  _winWidthTimer = setTimeout(() => {
-    let val = parseInt(input.value, 10);
-    if (isNaN(val)) val = WINDOW_DEFAULT_WIDTH;
-    val = Math.max(MIN_WINDOW_WIDTH, Math.min(MAX_WINDOW_WIDTH, val));
-    input.value = String(val);
-    win.width = val;
-    rebuildDoorsAndWindowsFull();
-    selectWindow(id);
-    triggerSave();
-  }, 300);
-});
-
-// ============================================================
-//  初始化
-// ============================================================
-
-drawGrid(gridLayer, state.showGrid);
-updateUndoRedoButtons();
-
-// 尝试从 localStorage 恢复状态
-const saved = loadFromStorage();
-if (saved) {
-  // 恢复状态
-  state.wallPoints = saved.wallPoints;
-  state.isClosed = saved.isClosed;
-  state.doors = saved.doors;
-  state.windows = saved.windows;
-  state.furnitureItems = saved.furnitureItems;
-  state.mode = saved.mode;
-  state.showGrid = saved.showGrid;
-  state.nextWallId = saved.nextWallId;
-  state.nextDoorId = saved.nextDoorId;
-  state.nextWindowId = saved.nextWindowId;
-
-  // 重建墙段
-  rebuildWallSegmentsFull();
-
-  // 重新渲染家具 (state.furnitureItems 已恢复，只需创建 Konva 图形)
-  for (const item of saved.furnitureItems) {
-    renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
-  }
-  furnitureLayer.batchDraw();
-
-  // 恢复网格
-  drawGrid(gridLayer, state.showGrid);
-
-  // 恢复模式 UI
-  state.mode = saved.mode;
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.classList.toggle('active', (btn as HTMLElement).dataset.mode === saved.mode);
-  });
-  const catalog = document.getElementById('furniture-catalog')!;
-  catalog.classList.toggle('visible', saved.mode === 'place');
-  const layoutBtn = document.getElementById('btn-layout')!;
-  layoutBtn.style.display = saved.mode === 'layout' ? 'block' : 'none';
-  const containerEl = stage.container();
-  if (saved.mode === 'draw') {
-    containerEl.style.cursor = 'crosshair';
-  } else if (saved.mode === 'place') {
-    containerEl.style.cursor = 'default';
-  } else {
-    containerEl.style.cursor = 'default';
-  }
-  // Update furniture draggability
-  furnitureLayer.find('Group').forEach(g => {
-    g.draggable(saved.mode === 'place');
   });
 
-  setStatus('📂 已恢复上次保存的房间', 'success');
-  log('已从 localStorage 恢复状态');
-} else {
-  // 首次访问 — 创建默认示例房间
-  setMode('draw');
-
-  // 添加示例墙 (400x300 房间)
-  const demoWalls = [
-    { x: 200, y: 150 },
-    { x: 600, y: 150 },
-    { x: 600, y: 450 },
-    { x: 200, y: 450 },
-  ];
-  for (const p of demoWalls) {
-    state.wallPoints.push({ x: p.x, y: p.y });
-  }
-  state.isClosed = true;
-  rebuildWallSegmentsFull();
-
-  // 添加示例门 (在底部墙上，t=0.3)
-  createDoorFull(3, 0.3, 80, true);
-
-  // 添加示例窗户 (在顶部墙上，t=0.5)
-  createWindowFull(0, 0.5, 100);
-
-  // 添加示例家具
-  placeFurnitureFull('bed', 240, 200);
-  placeFurnitureFull('desk', 480, 170);
-  placeFurnitureFull('wardrobe', 240, 420);
-  placeFurnitureFull('chair', 500, 260);
-  placeFurnitureFull('sofa', 420, 370);
-
-  setStatus('🏠 欢迎！已加载示例房间。试试切换模式或拖拽家具', 'idle');
+  log('v5.1 房间改造工具已加载');
 }
 
-// ---- AI 输入框 ----
-const aiInput = document.getElementById('ai-input') as HTMLInputElement;
-if (aiInput) {
-  aiInput.addEventListener('keydown', function(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      const text = aiInput.value.trim();
-      if (!text) return;
-      log('用户AI输入', { text });
-      setStatus(`已记录需求：${text.slice(0, 40)}... — AI 功能开发中`, 'success');
-      aiInput.value = '';
-    }
-  });
-}
-
-// ---- 预设模板按钮 ----
-document.querySelectorAll('.template-btn').forEach((btn) => {
-  btn.addEventListener('click', function(this: HTMLElement) {
-    const templateKey = this.dataset.template;
-    if (!templateKey) return;
-    const tmpl = ROOM_TEMPLATES[templateKey];
-    if (!tmpl) return;
-
-    log('加载模板', { template: tmpl.label });
-
-    // Clear everything
-    state.wallPoints = [];
-    state.wallSegments = [];
-    state.isClosed = false;
-    state.undoStack = [];
-    state.redoStack = [];
-    state.doors = [];
-    state.windows = [];
-    state.furnitureItems = [];
-    state.selectedWallId = null;
-    state.selectedElementId = null;
-    state.selectedElementType = null;
-    state.placingElementType = null;
-    document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
-    document.getElementById('door-panel')!.style.display = 'none';
-    document.getElementById('window-panel')!.style.display = 'none';
-    wallLayer.destroyChildren();
-    furnitureLayer.destroyChildren();
-    overlayLayer.destroyChildren();
-    previewLayer.destroyChildren();
-
-    // Create room from template dimensions
-    const pts = createRoomFromDimensions(tmpl.width, tmpl.height);
-    for (const p of pts) {
-      state.wallPoints.push({ x: p.x, y: p.y });
-    }
-    state.isClosed = true;
-    rebuildWallSegmentsFull();
-
-    // Place template furniture
-    for (const furn of tmpl.furniture) {
-      placeFurnitureFull(furn.type, furn.x, furn.y);
-    }
-
-    updateUndoRedoButtons();
-    wallLayer.batchDraw();
-    furnitureLayer.batchDraw();
-    clearStorage();
-    triggerSave();
-    setStatus(`已加载模板：${tmpl.label} — 可自由编辑`, 'success');
-  });
-});
-
-log('房间改造工具已加载');
-console.log('模式: 画户型 | 放家具 | 智能布局');
-console.log('快捷键: Ctrl+Z 撤销, Ctrl+Y 重做, Delete 删除选中, Escape 取消');
+init();

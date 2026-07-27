@@ -125,7 +125,10 @@ function undoWallPoint(): void {
   if (state.undoStack.length === 0) return;
   const snapshot = popUndo();
   if (!snapshot) return;
-  state.wallPoints = snapshot;
+  state.wallPoints = snapshot.wallPoints;
+  state.doors = snapshot.doors;
+  state.windows = snapshot.windows;
+  state.furnitureItems = snapshot.furnitureItems;
   if (state.isClosed && state.wallPoints.length < 3) {
     state.isClosed = false;
   }
@@ -143,7 +146,10 @@ function redoWallPoint(): void {
   if (state.redoStack.length === 0) return;
   const snapshot = popRedo();
   if (!snapshot) return;
-  state.wallPoints = snapshot;
+  state.wallPoints = snapshot.wallPoints;
+  state.doors = snapshot.doors;
+  state.windows = snapshot.windows;
+  state.furnitureItems = snapshot.furnitureItems;
   // Trigger rebuild via event
   document.dispatchEvent(new CustomEvent('wall-changed'));
   log('重做');
