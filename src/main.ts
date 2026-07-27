@@ -40,6 +40,8 @@ import { setActiveTab, initStepPanel } from './ui/stepPanel';
 import { initCanvasControls, computeRoomBounds } from './ui/canvasControls';
 import { renderStep1Panel, updateRoomInfo } from './ui/step1Room';
 import { renderStep2Panel, getSelectedFurniture } from './ui/step2Furniture';
+import { renderStep3Panel, setSchemeResults, getCurrentSchemeIdx, getSchemeCount, initSchemeKeyboardNav } from './ui/step3Layout';
+import { renderStep4Panel, setSelectedFurnitureIdx, getSelectedFurnitureIdx, refreshAdjustPanel } from './ui/step4Adjust';
 import './styles/main.css';
 
 // ============================================================
@@ -866,9 +868,164 @@ function init(): void {
     triggerSave();
   }
 
+  // ---- 渲染 Step 3 面板 (布局方案) ----
+  const step3Callbacks = {
+    onApplyScheme: (idx: number) => {
+      // Apply saved scheme to canvas
+      const schemes = _layoutSchemes;
+      if (schemes[idx]) {
+        furnitureLayer.destroyChildren();
+        state.furnitureItems = [];
+        for (const furn of schemes[idx].furniture) {
+          placeFurnitureFull(furn.type, furn.x, furn.y, furn.rotation);
+        }
+        furnitureLayer.batchDraw();
+        setStatusForTab('layout');
+      }
+    },
+    onRelayout: () => {
+      generateLayoutSchemes();
+      // Apply scheme A
+      step3Callbacks.onApplyScheme(0);
+      // Refresh panel
+      renderStep3Panel(document.getElementById('panel-layout')!, step3Callbacks);
+      setStatusForTab('layout');
+    },
+    onRestoreDefault: () => {
+      step3Callbacks.onApplyScheme(0);
+      renderStep3Panel(document.getElementById('panel-layout')!, step3Callbacks);
+      setStatusForTab('layout');
+    },
+  };
+
+  // Store layout schemes
+  let _layoutSchemes: Array<{ schemeId: string; furniture: Array<{ type: string; x: number; y: number; rotation: number }> }> = [];
+
+  function generateLayoutSchemes(): void {
+    // Scheme A: wall-hugging (existing algorithm)
+    const schemeA = state.furnitureItems.map((item, i) => {
+      const results = runSmartLayout(state.wallPoints, state.furnitureItems);
+      const r = results[i] || { x: item.x, y: item.y };
+      return { type: item.type, x: r.x, y: r.y, rotation: 0 };
+    });
+    // Scheme B: same as A but with slight offset for variety
+    const schemeB = schemeA.map(s => ({
+      ...s,
+      x: s.x + 10,
+      y: s.y + 15,
+    }));
+    _layoutSchemes = [
+      { schemeId: 'A', furniture: schemeA },
+      { schemeId: 'B', furniture: schemeB },
+    ];
+    setSchemeResults(_layoutSchemes);
+  }
+
+  // 布局后生成方案 — wrap the step2 onLayout callback
+  const _step2OnLayout = layoutFromSelection;
+  const wrappedLayout = () => { _step2OnLayout(); generateLayoutSchemes(); };
+
+  renderStep3Panel(document.getElementById('panel-layout')!, step3Callbacks);
+  initSchemeKeyboardNav(step3Callbacks);
+
+  // Override step2 onLayout to also generate schemes
   renderStep2Panel(document.getElementById('panel-furniture')!, {
-    onLayout: layoutFromSelection,
+    onLayout: wrappedLayout,
   });
+
+  // ---- 渲染 Step 4 面板 (微调) ----
+  const step4Callbacks = {
+    onSelectFurniture: (idx: number) => {
+      setSelectedFurnitureIdx(idx);
+      // Highlight on canvas
+      const groups = furnitureLayer.find('Group') as Konva.Group[];
+      if (groups[idx]) {
+        const group = groups[idx];
+        // Clear previous highlights
+        furnitureLayer.find('Group').forEach(g => {
+          const group2 = g as Konva.Group;
+          group2.getChildren().forEach(child => {
+            if (child instanceof Konva.Rect) {
+              child.stroke('');
+              child.strokeWidth(0);
+            }
+          });
+        });
+        group.getChildren().forEach(child => {
+          if (child instanceof Konva.Rect) {
+            child.stroke('#3498db');
+            child.strokeWidth(2);
+          }
+        });
+        furnitureLayer.batchDraw();
+      }
+    },
+    onRemoveFurniture: (idx: number) => {
+      pushUndo();
+      if (idx >= 0 && idx < state.furnitureItems.length) {
+        state.furnitureItems.splice(idx, 1);
+      }
+      furnitureLayer.destroyChildren();
+      for (const item of state.furnitureItems) {
+        renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+      }
+      furnitureLayer.batchDraw();
+      renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
+      triggerSave();
+    },
+    onRotateFurniture: (idx: number) => {
+      if (idx >= 0 && idx < state.furnitureItems.length) {
+        const item = state.furnitureItems[idx];
+        if (!item) return;
+        item.rotation = (item.rotation + 90) % 360;
+        furnitureLayer.destroyChildren();
+        for (const item of state.furnitureItems) {
+          renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+        }
+        furnitureLayer.batchDraw();
+        renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
+        triggerSave();
+      }
+    },
+    onRestoreLayout: () => {
+      // Go back to Step3 to re-apply scheme
+      setActiveTab('layout');
+    },
+    onAddFurniture: () => {
+      // Open a simple type selector and enter placement mode
+      const type = prompt('选择家具类型: bed/desk/wardrobe/chair/sofa');
+      if (type && FURNITURE_DEFS[type]) {
+        state.placingElementType = 'furniture';
+        state.dragFurnitureType = type;
+        setStatus('点击画布放置家具 — Esc 退出', 'placing');
+      }
+    },
+    onUndo: () => {
+      const snapshot = popUndo();
+      if (snapshot) {
+        state.wallPoints = snapshot.wallPoints;
+        state.isClosed = snapshot.isClosed;
+        state.doors = snapshot.doors;
+        state.windows = snapshot.windows;
+        state.furnitureItems = snapshot.furnitureItems;
+        rebuildWallSegmentsFull();
+        furnitureLayer.destroyChildren();
+        for (const item of state.furnitureItems) {
+          renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+        }
+        furnitureLayer.batchDraw();
+        renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
+        setStatus('已撤销', 'idle');
+        triggerSave();
+      }
+    },
+    onRedo: () => {
+      // Same pattern as undo but pop redo
+      setStatus('重做功能暂未实现', 'idle');
+    },
+  };
+
+  renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
 
   // 模板浮层事件
   document.querySelectorAll('.template-card').forEach(card => {
