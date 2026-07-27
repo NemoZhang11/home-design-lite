@@ -16,7 +16,7 @@ export function renderDoor(
   onDragMove: (id: number, x: number, y: number) => void,
   onDragEnd: () => void
 ): Konva.Group {
-  const pos = getWallPos(door.wallIdx, door.t, [seg]);
+  const pos = getWallPos(0, door.t, [seg]);
   if (!pos) {
     throw new Error(`Cannot render door: invalid position for wallIdx ${door.wallIdx}`);
   }
@@ -130,7 +130,7 @@ export function renderWindow(
   onDragMove: (id: number, x: number, y: number) => void,
   onDragEnd: () => void
 ): Konva.Group {
-  const pos = getWallPos(win.wallIdx, win.t, [seg]);
+  const pos = getWallPos(0, win.t, [seg]);
   if (!pos) {
     throw new Error(`Cannot render window: invalid position for wallIdx ${win.wallIdx}`);
   }
