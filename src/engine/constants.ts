@@ -25,9 +25,9 @@ export const MAX_WINDOW_WIDTH = 200;
 // 门/窗视觉常量 (比墙更突出)
 export const DOOR_FILL = '#E74C3C';
 export const DOOR_ARC_FILL = 'rgba(231, 76, 60, 0.25)';
-export const DOOR_BODY_HEIGHT = 24;              // 墙厚12，门24，上下各多6px
+export const DOOR_BODY_HEIGHT = 18;              // 墙厚12，门18，上下各多3px
 export const WINDOW_FRAME_FILL = '#3498DB';
-export const WINDOW_FRAME_HEIGHT = 24;           // 墙厚12，窗24，上下各多6px
+export const WINDOW_FRAME_HEIGHT = 18;           // 墙厚12，窗18，上下各多3px
 
 // 家具定义: 类型 → { 颜色, 宽, 高, 中文名 }
 export const FURNITURE_DEFS: Record<string, FurnitureDef> = {

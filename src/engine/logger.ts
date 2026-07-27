@@ -12,4 +12,12 @@ export function log(msg: string, data?: unknown): void {
   } else {
     console.log(fullMsg);
   }
+  // 同时追加到应用内日志面板
+  const entries = document.getElementById('log-entries');
+  if (entries) {
+    const line = document.createElement('div');
+    line.textContent = data ? `${fullMsg} ${JSON.stringify(data)}` : fullMsg;
+    entries.prepend(line);
+    if (entries.children.length > 50) entries.lastChild?.remove();
+  }
 }

@@ -212,6 +212,21 @@ function renderSingleWallSegment(seg: WallSegment): void {
   });
   group.add(rect);
 
+  // 加宽隐形点击区域 — 便于门/窗放置点击
+  const hitArea = new Konva.Rect({
+    x: -seg.length / 2,
+    y: -20,
+    width: seg.length,
+    height: 40,
+    fill: 'transparent',
+    stroke: 'transparent',
+    name: 'wall-hit-area',
+    listening: true,
+    opacity: 0,
+  });
+  group.add(hitArea);
+  hitArea.moveToBottom();
+
   // 端点圆
   const end1 = new Konva.Circle({
     x: -seg.length / 2,
@@ -886,11 +901,19 @@ stage.on('click', function(e) {
   const pos = stage.getPointerPosition();
   if (!pos) return;
 
+  // 如果点击的是已有的门/窗，让它们自己的事件处理（避免在放置模式下重复放置）
+  if (state.placingElementType && (
+    targetName === 'door-body' || targetName === 'door-hinge' || targetName === 'door-arc' ||
+    targetName === 'window-frame' || targetName === 'window-line'
+  )) {
+    return;
+  }
+
   // 如果正在放置门/窗，优先处理
   if (state.mode === 'draw' && state.placingElementType) {
     if (state.placingElementType === 'door') {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
-      if (result && result.dist < 30) {
+      if (result && result.dist < 40) {
         createDoorFull(result.idx, result.t, DOOR_DEFAULT_WIDTH, true, 'left');
         setStatus('门已放置 — 点击继续放置，Esc 退出', 'success');
         log('门已放置', { wallIdx: result.idx, t: result.t });
@@ -899,7 +922,7 @@ stage.on('click', function(e) {
     }
     if (state.placingElementType === 'window') {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
-      if (result && result.dist < 30) {
+      if (result && result.dist < 40) {
         createWindowFull(result.idx, result.t, WINDOW_DEFAULT_WIDTH);
         setStatus('窗户已放置 — 点击继续放置，Esc 退出', 'success');
         log('窗户已放置', { wallIdx: result.idx, t: result.t });
@@ -935,7 +958,7 @@ stage.on('mousemove', function() {
   const pos = stage.getPointerPosition();
   if (!pos) return;
   const result = findNearestWall(pos.x, pos.y, state.wallSegments);
-  if (result && result.dist < 30) {
+  if (result && result.dist < 40) {
     const seg = state.wallSegments[result.idx];
     if (!seg) return;
     showPreviewGhost(state.placingElementType, result.projX, result.projY, seg.angle, previewLayer);
@@ -1136,7 +1159,7 @@ document.getElementById('btn-door-hinge')!.addEventListener('click', function() 
   triggerSave();
 });
 
-document.getElementById('door-width-input')!.addEventListener('change', function() {
+document.getElementById('door-width-input')!.addEventListener('input', function() {
   const id = state.selectedElementId;
   if (id === null || state.selectedElementType !== 'door') return;
   const door = state.doors.find(d => d.id === id);
@@ -1153,7 +1176,7 @@ document.getElementById('door-width-input')!.addEventListener('change', function
 });
 
 // ---- 窗户参数面板事件 ----
-document.getElementById('window-width-input')!.addEventListener('change', function() {
+document.getElementById('window-width-input')!.addEventListener('input', function() {
   const id = state.selectedElementId;
   if (id === null || state.selectedElementType !== 'window') return;
   const win = state.windows.find(w => w.id === id);
