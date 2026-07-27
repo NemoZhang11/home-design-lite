@@ -103,8 +103,21 @@ export function renderDoor(
   group.on('dragstart', () => onSelect(door.id));
   group.on('dragmove', function() {
     onDragMove(door.id, this.x(), this.y());
+    // 拖动时锁定在墙上：投影光标到墙段
+    const result = pointToSegmentDist(this.x(), this.y(), seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y);
+    const wallPos = getWallPos(0, result.t, [seg]);
+    if (wallPos) {
+      this.x(wallPos.x);
+      this.y(wallPos.y);
+    }
   });
   group.on('dragend', onDragEnd);
+  group.on('mouseenter', () => {
+    layer.getStage()!.container().style.cursor = 'grab';
+  });
+  group.on('mouseleave', () => {
+    layer.getStage()!.container().style.cursor = '';
+  });
 
   layer.add(group);
   return group;
@@ -181,8 +194,21 @@ export function renderWindow(
   group.on('dragstart', () => onSelect(win.id));
   group.on('dragmove', function() {
     onDragMove(win.id, this.x(), this.y());
+    // 拖动时锁定在墙上：投影光标到墙段
+    const result = pointToSegmentDist(this.x(), this.y(), seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y);
+    const wallPos = getWallPos(0, result.t, [seg]);
+    if (wallPos) {
+      this.x(wallPos.x);
+      this.y(wallPos.y);
+    }
   });
   group.on('dragend', onDragEnd);
+  group.on('mouseenter', () => {
+    layer.getStage()!.container().style.cursor = 'grab';
+  });
+  group.on('mouseleave', () => {
+    layer.getStage()!.container().style.cursor = '';
+  });
 
   layer.add(group);
   return group;

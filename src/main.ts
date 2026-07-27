@@ -1174,37 +1174,48 @@ document.getElementById('btn-door-hinge')!.addEventListener('click', function() 
   triggerSave();
 });
 
+// ---- 门宽输入 (防抖：打字时不重建，300ms无输入后生效) ----
+let _doorWidthTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('door-width-input')!.addEventListener('input', function() {
   const id = state.selectedElementId;
   if (id === null || state.selectedElementType !== 'door') return;
   const door = state.doors.find(d => d.id === id);
   if (!door) return;
   const input = this as HTMLInputElement;
-  let val = parseInt(input.value, 10);
-  if (isNaN(val)) val = DOOR_DEFAULT_WIDTH;
-  val = Math.max(MIN_DOOR_WIDTH, Math.min(MAX_DOOR_WIDTH, val));
-  input.value = String(val);
-  door.width = val;
-  rebuildDoorsAndWindowsFull();
-  selectDoor(id);
-  triggerSave();
+
+  if (_doorWidthTimer) clearTimeout(_doorWidthTimer);
+  _doorWidthTimer = setTimeout(() => {
+    let val = parseInt(input.value, 10);
+    if (isNaN(val)) val = DOOR_DEFAULT_WIDTH;
+    val = Math.max(MIN_DOOR_WIDTH, Math.min(MAX_DOOR_WIDTH, val));
+    input.value = String(val);
+    door.width = val;
+    rebuildDoorsAndWindowsFull();
+    selectDoor(id);
+    triggerSave();
+  }, 300);
 });
 
-// ---- 窗户参数面板事件 ----
+// ---- 窗宽输入 (防抖) ----
+let _winWidthTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('window-width-input')!.addEventListener('input', function() {
   const id = state.selectedElementId;
   if (id === null || state.selectedElementType !== 'window') return;
   const win = state.windows.find(w => w.id === id);
   if (!win) return;
   const input = this as HTMLInputElement;
-  let val = parseInt(input.value, 10);
-  if (isNaN(val)) val = WINDOW_DEFAULT_WIDTH;
-  val = Math.max(MIN_WINDOW_WIDTH, Math.min(MAX_WINDOW_WIDTH, val));
-  input.value = String(val);
-  win.width = val;
-  rebuildDoorsAndWindowsFull();
-  selectWindow(id);
-  triggerSave();
+
+  if (_winWidthTimer) clearTimeout(_winWidthTimer);
+  _winWidthTimer = setTimeout(() => {
+    let val = parseInt(input.value, 10);
+    if (isNaN(val)) val = WINDOW_DEFAULT_WIDTH;
+    val = Math.max(MIN_WINDOW_WIDTH, Math.min(MAX_WINDOW_WIDTH, val));
+    input.value = String(val);
+    win.width = val;
+    rebuildDoorsAndWindowsFull();
+    selectWindow(id);
+    triggerSave();
+  }, 300);
 });
 
 // ============================================================
