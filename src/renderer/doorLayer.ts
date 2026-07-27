@@ -97,7 +97,6 @@ export function renderDoor(
   // 事件
   group.on('click', () => onSelect(door.id));
   group.on('dblclick', function() {
-    onSelect(door.id);
     const event = new CustomEvent('element-dblclick', { detail: { type: 'door', id: door.id } });
     document.dispatchEvent(event);
   });
@@ -176,7 +175,6 @@ export function renderWindow(
   // 事件
   group.on('click', () => onSelect(win.id));
   group.on('dblclick', function() {
-    onSelect(win.id);
     const event = new CustomEvent('element-dblclick', { detail: { type: 'window', id: win.id } });
     document.dispatchEvent(event);
   });

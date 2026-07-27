@@ -258,6 +258,8 @@ function renderSingleWallSegment(seg: WallSegment): void {
   // ---- 墙段点击选中 ----
   rect.on('click', function() {
     if (state.mode !== 'draw') return;
+    // 正在放置门/窗时不选中墙段，避免覆盖门窗创建逻辑
+    if (state.placingElementType) return;
     selectWallSegment(seg);
   });
 
@@ -915,7 +917,13 @@ stage.on('click', function(e) {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
       if (result && result.dist < 40) {
         createDoorFull(result.idx, result.t, DOOR_DEFAULT_WIDTH, true, 'left');
-        setStatus('门已放置 — 点击继续放置，Esc 退出', 'success');
+        // 单次放置模式：放置后自动选中门并退出放置
+        const lastDoor = state.doors[state.doors.length - 1];
+        if (lastDoor) selectDoor(lastDoor.id);
+        state.placingElementType = null;
+        document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
+        hidePreviewGhost(previewLayer);
+        setStatus('门已放置 — 双击可调参数', 'success');
         log('门已放置', { wallIdx: result.idx, t: result.t });
       }
       return;
@@ -924,7 +932,13 @@ stage.on('click', function(e) {
       const result = findNearestWall(pos.x, pos.y, state.wallSegments);
       if (result && result.dist < 40) {
         createWindowFull(result.idx, result.t, WINDOW_DEFAULT_WIDTH);
-        setStatus('窗户已放置 — 点击继续放置，Esc 退出', 'success');
+        // 单次放置模式：放置后自动选中窗并退出放置
+        const lastWin = state.windows[state.windows.length - 1];
+        if (lastWin) selectWindow(lastWin.id);
+        state.placingElementType = null;
+        document.querySelectorAll('#building-catalog .furniture-card').forEach(c => c.classList.remove('placing-active'));
+        hidePreviewGhost(previewLayer);
+        setStatus('窗户已放置 — 双击可调参数', 'success');
         log('窗户已放置', { wallIdx: result.idx, t: result.t });
       }
       return;
@@ -934,6 +948,7 @@ stage.on('click', function(e) {
 
   // 如果点击的是墙段、门、窗，让它们自己的事件处理
   if (targetName === 'wall-body' || targetName === 'wall-endpoint' ||
+      targetName === 'wall-hit-area' ||
       targetName === 'door-body' || targetName === 'door-hinge' ||
       targetName === 'door-arc' || targetName === 'window-frame' ||
       targetName === 'window-line') return;
