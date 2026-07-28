@@ -94,6 +94,20 @@ export function renderDoor(
   // 设置弧方向 (hingeSide + swingInward)
   updateDoorArc(group, door.swingInward, door.hingeSide);
 
+  // 门宽度标签
+  const doorLabel = new Konva.Text({
+    x: -15,
+    y: -DOOR_BODY_HEIGHT / 2 - 16,
+    text: `🚪${door.width}`,
+    fontSize: 10,
+    fill: '#2c3e50',
+    align: 'center',
+    width: 30,
+    name: 'door-label',
+    listening: false,
+  });
+  group.add(doorLabel);
+
   // 事件
   group.on('click', () => onSelect(door.id));
   group.on('dblclick', function() {
@@ -184,6 +198,20 @@ export function renderWindow(
     });
     group.add(line);
   }
+
+  // 窗户宽度标签
+  const winLabel = new Konva.Text({
+    x: -15,
+    y: -WINDOW_FRAME_HEIGHT / 2 - 16,
+    text: `🪟${win.width}`,
+    fontSize: 10,
+    fill: '#2c3e50',
+    align: 'center',
+    width: 30,
+    name: 'window-label',
+    listening: false,
+  });
+  group.add(winLabel);
 
   // 事件
   group.on('click', () => onSelect(win.id));

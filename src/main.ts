@@ -223,6 +223,34 @@ function renderSingleWallSegment(seg: WallSegment): void {
   });
   group.add(end2);
 
+  // ---- 墙段 hover 发光 ----
+  rect.on('mouseenter', function() {
+    rect.shadowColor('#3498db');
+    rect.shadowBlur(6);
+    rect.shadowOpacity(0.5);
+    rect.shadowEnabled(true);
+    wallLayer.batchDraw();
+  });
+  rect.on('mouseleave', function() {
+    rect.shadowEnabled(false);
+    wallLayer.batchDraw();
+  });
+
+  // ---- 墙段长度标注 ----
+  const labelText = new Konva.Text({
+    x: 0,
+    y: -WALL_THICKNESS / 2 - 16,
+    text: `${Math.round(seg.length)}cm`,
+    fontSize: 11,
+    fill: '#95a5a6',
+    align: 'center',
+    width: seg.length,
+    offsetX: seg.length / 2,
+    name: 'wall-label',
+    listening: false,
+  });
+  group.add(labelText);
+
   wallLayer.add(group);
   (seg as WallSegment & { group: Konva.Group }).group = group;
 
@@ -1053,13 +1081,70 @@ function init(): void {
 
   // 上下文菜单
   const ctxMenu = document.getElementById('context-menu')!;
+  let _ctxTargetIdx = -1;
+
   document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
   ctxMenu.addEventListener('click', function(e: Event) {
     const target = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement;
     if (!target) return;
-    // TODO: wire actions in Wave 4
+    const action = target.dataset.action;
     ctxMenu.style.display = 'none';
+    if (_ctxTargetIdx < 0 || _ctxTargetIdx >= state.furnitureItems.length) return;
+
+    switch (action) {
+      case 'rotate': {
+        pushUndo();
+        const it = state.furnitureItems[_ctxTargetIdx];
+        if (!it) break;
+        it.rotation = (it.rotation + 90) % 360;
+        rebuildFurnitureVisuals();
+        triggerSave();
+        break;
+      }
+      case 'delete':
+        pushUndo();
+        state.furnitureItems.splice(_ctxTargetIdx, 1);
+        rebuildFurnitureVisuals();
+        triggerSave();
+        break;
+    }
   });
+
+  // 家具右键菜单 — listen on stage contextmenu
+  stage.on('contextmenu', function(e: Konva.KonvaEventObject<PointerEvent>) {
+    e.evt.preventDefault();
+    const target = e.target;
+    const parentGroup = target.findAncestor('Group', true);
+    if (!parentGroup) return;
+    const name = parentGroup.name();
+    if (!name || !name.startsWith('furniture-')) return;
+
+    // Find furniture index
+    const type = name.replace('furniture-', '');
+    for (let i = 0; i < state.furnitureItems.length; i++) {
+      const fi = state.furnitureItems[i];
+      if (fi && fi.type === type) {
+        _ctxTargetIdx = i;
+        break;
+      }
+    }
+    if (_ctxTargetIdx < 0) return;
+
+    const pos = stage.getPointerPosition();
+    if (pos) {
+      ctxMenu.style.display = 'block';
+      ctxMenu.style.left = pos.x + 10 + 'px';
+      ctxMenu.style.top = pos.y + 10 + 'px';
+    }
+  });
+
+  function rebuildFurnitureVisuals(): void {
+    furnitureLayer.destroyChildren();
+    for (const item of state.furnitureItems) {
+      renderPlaceFurniture(furnitureLayer, item.type, item.x, item.y, item.rotation, stage, removeFurniture);
+    }
+    furnitureLayer.batchDraw();
+  }
 
   // 尝试加载 localStorage
   const saved = loadFromStorage();
