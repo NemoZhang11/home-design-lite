@@ -10,7 +10,8 @@ docs/
 │   ├── LLM核心价值.md            → LLM为什么重要（本文）← **新**
 │   └── LLM个性化定制方案.md      → LLM详细技术方案（Prompt、偏好向量、交互）
 ├── 技术/
-│   └── ARCHITECTURE.md           → 技术架构
+│   ├── ARCHITECTURE.md           → 技术架构
+│   └── 本地开发测试指南.md         → 启动/构建/调试/回归清单
 ├── 项目管理/
 │   ├── README.md                 → 文档导航
 │   └── PROGRESS.md               → 项目进度
