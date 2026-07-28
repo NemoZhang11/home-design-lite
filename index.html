@@ -33,9 +33,27 @@
           <div class="panel-content" id="panel-layout" style="display:none;"></div>
           <div class="panel-content" id="panel-adjust" style="display:none;"></div>
 
-          <!-- 无房间引导 (非房间标签时显示) -->
+          <!-- 无房间引导 -->
           <div class="panel-content" id="panel-no-room" style="display:none;">
             <div class="no-room-hint">🏠 请先创建房间</div>
+          </div>
+
+          <!-- 门/窗参数面板 (选中时叠加显示) -->
+          <div class="panel-param" id="door-panel" style="display:none;">
+            <div class="panel-section-title">门参数</div>
+            <div style="font-size:11px; color:#7f8c8d; margin-bottom:2px;">宽度 (cm)</div>
+            <input type="number" id="door-width-input" min="40" max="200" step="5" value="80"
+              style="width:100%; padding:4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px; margin-bottom:6px;">
+            <div style="display:flex; gap:4px;">
+              <button class="action-btn" id="btn-door-hinge" style="flex:1; font-size:11px; padding:4px;">铰链: 左</button>
+              <button class="action-btn" id="btn-door-dir" style="flex:1; font-size:11px; padding:4px;">向内开</button>
+            </div>
+          </div>
+          <div class="panel-param" id="window-panel" style="display:none;">
+            <div class="panel-section-title">窗户参数</div>
+            <div style="font-size:11px; color:#7f8c8d; margin-bottom:2px;">宽度 (cm)</div>
+            <input type="number" id="window-width-input" min="40" max="200" step="5" value="100"
+              style="width:100%; padding:4px; border:1px solid #d5d0ca; border-radius:4px; font-size:12px;">
           </div>
         </div>
 

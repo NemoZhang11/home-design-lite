@@ -358,6 +358,10 @@ function clearSelectionFull(): void {
     }
   }
   clearSelection();
+  const dp = document.getElementById('door-panel');
+  const wp = document.getElementById('window-panel');
+  if (dp) dp.style.display = 'none';
+  if (wp) wp.style.display = 'none';
   overlayLayer.destroyChildren();
   overlayLayer.batchDraw();
 }
@@ -426,6 +430,16 @@ function selectDoor(id: number): void {
   state.selectedElementId = id;
   state.selectedElementType = 'door';
 
+  // 显示门参数面板
+  const panel = document.getElementById('door-panel')!;
+  panel.style.display = 'block';
+  const widthInput = document.getElementById('door-width-input') as HTMLInputElement;
+  widthInput.value = String(door.width);
+  const hingeBtn = document.getElementById('btn-door-hinge')!;
+  hingeBtn.textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
+  const dirBtn = document.getElementById('btn-door-dir')!;
+  dirBtn.textContent = door.swingInward ? '向内开' : '向外开';
+
   renderDoorSelectionHandles(door, state.wallSegments, overlayLayer, (newWidth: number) => {
     door.width = newWidth;
     rebuildDoorsAndWindowsFull();
@@ -440,6 +454,12 @@ function selectWindow(id: number): void {
   if (!win) return;
   state.selectedElementId = id;
   state.selectedElementType = 'window';
+
+  // 显示窗户参数面板
+  const panel = document.getElementById('window-panel')!;
+  panel.style.display = 'block';
+  const widthInput = document.getElementById('window-width-input') as HTMLInputElement;
+  widthInput.value = String(win.width);
 
   renderWindowSelectionHandles(win, state.wallSegments, overlayLayer, (newWidth: number) => {
     win.width = newWidth;
@@ -493,18 +513,26 @@ function updateDoorsWindowsOnSegments(): void {
 // ============================================================
 
 function removeFurniture(group: Konva.Group): void {
+  const type = group.name().replace('furniture-', '');
+  const gx = group.x();
+  const gy = group.y();
+  // Robust matching: find closest item by type + position proximity
+  let bestIdx = -1;
+  let bestDist = Infinity;
   for (let i = 0; i < state.furnitureItems.length; i++) {
-    const item = state.furnitureItems[i];
-    if (item && item.type === group.name().replace('furniture-', '')) {
-      if (Math.abs(item.x - group.x()) < 1 && Math.abs(item.y - group.y()) < 1) {
-        state.furnitureItems.splice(i, 1);
-        break;
-      }
+    const item = state.furnitureItems[i]!;
+    if (item.type === type) {
+      const d = Math.abs(item.x - gx) + Math.abs(item.y - gy);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
   }
-  group.destroy();
-  furnitureLayer.batchDraw();
-  triggerSave();
+  if (bestIdx >= 0 && bestDist < 200) {
+    pushUndo();
+    state.furnitureItems.splice(bestIdx, 1);
+    group.destroy();
+    furnitureLayer.batchDraw();
+    triggerSave();
+  }
 }
 
 function placeFurnitureFull(type: string, x: number, y: number, rotation?: number): void {
@@ -679,6 +707,41 @@ stage.on('click', function(e) {
   }
 });
 
+// ---- 家具拖拽结束 → 同步 state ----
+stage.on('dragend', function(e) {
+  const target = e.target;
+  // 检查是否拖拽了家具的旋转手柄或主体
+  const parent = target.findAncestor('Group', true);
+  if (!parent) return;
+  const name = parent.name();
+  if (!name || !name.startsWith('furniture-')) return;
+
+  const type = name.replace('furniture-', '');
+  const gx = parent.x();
+  const gy = parent.y();
+  const rot = parent.rotation();
+
+  // Find best match and update
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < state.furnitureItems.length; i++) {
+    const item = state.furnitureItems[i]!;
+    if (item.type === type) {
+      const d = Math.abs(item.x - gx) + Math.abs(item.y - gy);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+  }
+  if (bestIdx >= 0 && bestDist < 500) {
+    const fi = state.furnitureItems[bestIdx];
+    if (!fi) return;
+    pushUndo();
+    fi.x = gx;
+    fi.y = gy;
+    fi.rotation = rot;
+    triggerSave();
+  }
+});
+
 // 幽灵预览 (家具也在此预览)
 stage.on('mousemove', function() {
   hidePreviewGhost(previewLayer);
@@ -755,10 +818,13 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
       }
     }
     if (state.activeTab === 'adjust') {
-      const selected = (furnitureLayer.find('Group') as Konva.Group[]).filter(g => {
-        const rect = g.findOne('Rect') as Konva.Rect | undefined;
-        return rect && rect.stroke() === '#3498db';
-      });
+      const selected = (furnitureLayer.find('Group') as Konva.Group[])
+        .filter(g => g.name()?.startsWith('furniture-'))
+        .filter(g => {
+          const kids = g.getChildren();
+          return kids.some(k => k instanceof Konva.Rect && k.stroke() === '#3498db');
+        });
+      pushUndo();
       selected.forEach(g => removeFurniture(g));
     }
   }
@@ -1038,6 +1104,12 @@ function init(): void {
       // Go back to Step3 to re-apply scheme
       setActiveTab('layout');
     },
+    onQuickPlaceFurniture: (type: string) => {
+      state.placingElementType = 'furniture';
+      state.dragFurnitureType = type;
+      const def = FURNITURE_DEFS[type];
+      setStatus(`点击画布放置${def?.label || type} — 连点连放，Esc 退出`, 'placing');
+    },
     onAddFurniture: () => {
       // 显示家具选择弹窗
       const picker = document.getElementById('modal-furniture-picker')!;
@@ -1245,6 +1317,75 @@ function init(): void {
     rebuildDoorsAndWindowsFull();
     selectDoor(id);
     triggerSave();
+  });
+
+  // ---- 门/窗参数面板事件 ----
+  document.getElementById('btn-door-hinge')!.addEventListener('click', function() {
+    const id = state.selectedElementId;
+    if (id === null || state.selectedElementType !== 'door') return;
+    const door = state.doors.find(d => d.id === id);
+    if (!door) return;
+    pushUndo();
+    door.hingeSide = door.hingeSide === 'left' ? 'right' : 'left';
+    (this as HTMLElement).textContent = door.hingeSide === 'left' ? '铰链: 左' : '铰链: 右';
+    rebuildDoorsAndWindowsFull();
+    selectDoor(id);
+    triggerSave();
+  });
+
+  document.getElementById('btn-door-dir')!.addEventListener('click', function() {
+    const id = state.selectedElementId;
+    if (id === null || state.selectedElementType !== 'door') return;
+    const door = state.doors.find(d => d.id === id);
+    if (!door) return;
+    pushUndo();
+    door.swingInward = !door.swingInward;
+    (this as HTMLElement).textContent = door.swingInward ? '向内开' : '向外开';
+    document.dispatchEvent(new CustomEvent('door-changed'));
+  });
+
+  // 门宽输入 (防抖)
+  let _doorWidthTimer: ReturnType<typeof setTimeout> | null = null;
+  document.getElementById('door-width-input')!.addEventListener('input', function() {
+    const id = state.selectedElementId;
+    if (id === null || state.selectedElementType !== 'door') return;
+    const door = state.doors.find(d => d.id === id);
+    if (!door) return;
+    const input = this as HTMLInputElement;
+    if (_doorWidthTimer) clearTimeout(_doorWidthTimer);
+    _doorWidthTimer = setTimeout(() => {
+      let val = parseInt(input.value, 10);
+      if (isNaN(val)) val = DOOR_DEFAULT_WIDTH;
+      val = Math.max(MIN_DOOR_WIDTH, Math.min(MAX_DOOR_WIDTH, val));
+      input.value = String(val);
+      pushUndo();
+      door.width = val;
+      rebuildDoorsAndWindowsFull();
+      selectDoor(id);
+      triggerSave();
+    }, 300);
+  });
+
+  // 窗宽输入 (防抖)
+  let _winWidthTimer: ReturnType<typeof setTimeout> | null = null;
+  document.getElementById('window-width-input')!.addEventListener('input', function() {
+    const id = state.selectedElementId;
+    if (id === null || state.selectedElementType !== 'window') return;
+    const win = state.windows.find(w => w.id === id);
+    if (!win) return;
+    const input = this as HTMLInputElement;
+    if (_winWidthTimer) clearTimeout(_winWidthTimer);
+    _winWidthTimer = setTimeout(() => {
+      let val = parseInt(input.value, 10);
+      if (isNaN(val)) val = WINDOW_DEFAULT_WIDTH;
+      val = Math.max(MIN_WINDOW_WIDTH, Math.min(MAX_WINDOW_WIDTH, val));
+      input.value = String(val);
+      pushUndo();
+      win.width = val;
+      rebuildDoorsAndWindowsFull();
+      selectWindow(id);
+      triggerSave();
+    }, 300);
   });
 
   log('v5.1 房间改造工具已加载');

@@ -18,6 +18,7 @@ export interface Step4Callbacks {
   onRotateFurniture: (index: number) => void;
   onRestoreLayout: () => void;
   onAddFurniture: () => void;
+  onQuickPlaceFurniture: (type: string) => void;
   onUndo: () => void;
   onRedo: () => void;
 }
@@ -28,9 +29,35 @@ let _selectedFurnitureIdx = -1;
 export function renderStep4Panel(container: HTMLElement, callbacks: Step4Callbacks): void {
   container.innerHTML = '';
 
+  // ---- 快速添加家具 (快捷放置) ----
+  const quickTitle = document.createElement('div');
+  quickTitle.className = 'panel-section-title';
+  quickTitle.textContent = '快速添加';
+  container.appendChild(quickTitle);
+
+  const quickGrid = document.createElement('div');
+  quickGrid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:8px;';
+
+  const types = ['bed', 'desk', 'wardrobe', 'chair', 'sofa'] as const;
+  const emoji: Record<string, string> = { bed: '🛏️', desk: '📝', wardrobe: '🗄️', chair: '💺', sofa: '🛋️' };
+
+  for (const type of types) {
+    const def = FURNITURE_DEFS[type];
+    if (!def) continue;
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex; align-items:center; gap:4px; padding:5px 8px; background:#fff; border:1px solid #e8e2dc; border-radius:6px; cursor:pointer; font-size:12px;';
+    card.innerHTML = `<span>${emoji[type]}</span><span style="font-weight:500;">${def.label}</span><span style="color:#95a5a6; margin-left:auto;">${def.w}×${def.h}</span>`;
+    card.addEventListener('click', () => {
+      // Enter placement mode
+      callbacks.onQuickPlaceFurniture(type);
+    });
+    quickGrid.appendChild(card);
+  }
+  container.appendChild(quickGrid);
+
   const title = document.createElement('div');
   title.className = 'panel-section-title';
-  title.textContent = '房间里放了这些：';
+  title.textContent = '已放置家具';
   container.appendChild(title);
 
   // 家具列表容器
