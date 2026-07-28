@@ -660,22 +660,41 @@ stage.on('click', function(e) {
       targetName === 'door-body' || targetName === 'door-hinge' || targetName === 'door-arc' ||
       targetName === 'window-frame' || targetName === 'window-line') return;
 
-  if (state.activeTab === 'room') {
-    addWallPoint(pos.x, pos.y);
-  } else if (state.mode === 'place' && state.dragFurnitureType) {
+  // 手动放置家具 (在任何标签下，只要 placingElementType === 'furniture')
+  if (state.placingElementType === 'furniture' && state.dragFurnitureType) {
+    pushUndo();
     placeFurnitureFull(state.dragFurnitureType, pos.x, pos.y);
     state.dragFurnitureType = null;
+    // 保持放置模式，允许连放多个
+    // state.placingElementType = null; — 保持，用户按 Esc 退出
+    setStatusForTab(state.activeTab);
+    return;
+  }
+
+  if (state.activeTab === 'room') {
+    addWallPoint(pos.x, pos.y);
   } else {
     clearSelectionFull();
     wallLayer.batchDraw();
   }
 });
 
-// 幽灵预览
+// 幽灵预览 (家具也在此预览)
 stage.on('mousemove', function() {
   hidePreviewGhost(previewLayer);
+
+  // 家具幽灵预览
+  if (state.placingElementType === 'furniture' && state.dragFurnitureType) {
+    const pos = stage.getPointerPosition();
+    if (pos) {
+      showPreviewGhost('furniture', pos.x, pos.y, 0, previewLayer, state.dragFurnitureType);
+    }
+    return;
+  }
+
+  // 门/窗幽灵预览
   if (!state.placingElementType || state.activeTab !== 'room') return;
-  if (state.placingElementType === 'furniture') return; // furniture ghost handled separately
+  if (state.placingElementType === 'furniture') return;
   const pos = stage.getPointerPosition();
   if (!pos) return;
   const result = findNearestWall(pos.x, pos.y, state.wallSegments);
@@ -1020,13 +1039,40 @@ function init(): void {
       setActiveTab('layout');
     },
     onAddFurniture: () => {
-      // Open a simple type selector and enter placement mode
-      const type = prompt('选择家具类型: bed/desk/wardrobe/chair/sofa');
-      if (type && FURNITURE_DEFS[type]) {
-        state.placingElementType = 'furniture';
-        state.dragFurnitureType = type;
-        setStatus('点击画布放置家具 — Esc 退出', 'placing');
+      // 显示家具选择弹窗
+      const picker = document.getElementById('modal-furniture-picker')!;
+      const grid = document.getElementById('furniture-picker-grid')!;
+      grid.innerHTML = '';
+
+      const types = ['bed', 'desk', 'wardrobe', 'chair', 'sofa'] as const;
+      const emoji: Record<string, string> = { bed: '🛏️', desk: '📝', wardrobe: '🗄️', chair: '💺', sofa: '🛋️' };
+
+      for (const type of types) {
+        const def = FURNITURE_DEFS[type];
+        if (!def) continue;
+        const card = document.createElement('div');
+        card.className = 'furniture-picker-card';
+        card.innerHTML = `
+          <span class="picker-emoji">${emoji[type]}</span>
+          <span class="picker-name">${def.label}</span>
+          <span class="picker-size">${def.w}×${def.h}</span>
+        `;
+        card.addEventListener('click', () => {
+          picker.style.display = 'none';
+          state.placingElementType = 'furniture';
+          state.dragFurnitureType = type;
+          setStatus(`点击画布放置${def.label} — 连点连放，Esc 退出`, 'placing');
+        });
+        grid.appendChild(card);
       }
+
+      picker.style.display = 'flex';
+      document.getElementById('btn-picker-cancel')!.addEventListener('click', () => {
+        picker.style.display = 'none';
+      });
+      picker.addEventListener('click', function(e: MouseEvent) {
+        if (e.target === picker) picker.style.display = 'none';
+      });
     },
     onUndo: () => {
       const snapshot = popUndo();
