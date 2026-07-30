@@ -22,7 +22,7 @@ import {
 } from './engine/geometry';
 import { rebuildWallSegments, createRoomFromDimensions } from './engine/walls';
 import { rebuildDoorsAndWindowsData } from './engine/openings';
-import { runSmartLayout } from './engine/layout';
+import { runSmartLayout, runSmartLayoutB } from './engine/layout';
 import { log } from './engine/logger';
 import { drawGrid } from './renderer/gridLayer';
 import {
@@ -43,6 +43,9 @@ import { renderStep2Panel, getSelectedFurniture } from './ui/step2Furniture';
 import { renderStep3Panel, setSchemeResults, getCurrentSchemeIdx, getSchemeCount, initSchemeKeyboardNav } from './ui/step3Layout';
 import { renderStep4Panel, setSelectedFurnitureIdx, getSelectedFurnitureIdx, refreshAdjustPanel } from './ui/step4Adjust';
 import './styles/main.css';
+
+// 模块级引用 — 供键盘事件刷新面板
+let _refreshStep4: (() => void) | null = null;
 
 // ============================================================
 //  预设模板
@@ -692,9 +695,7 @@ stage.on('click', function(e) {
   if (state.placingElementType === 'furniture' && state.dragFurnitureType) {
     pushUndo();
     placeFurnitureFull(state.dragFurnitureType, pos.x, pos.y);
-    state.dragFurnitureType = null;
-    // 保持放置模式，允许连放多个
-    // state.placingElementType = null; — 保持，用户按 Esc 退出
+    // 保持 dragFurnitureType 不重置 → 幽灵预览继续跟随鼠标，支持连点连放
     setStatusForTab(state.activeTab);
     return;
   }
@@ -826,6 +827,7 @@ document.addEventListener('keydown', function(e: KeyboardEvent) {
         });
       pushUndo();
       selected.forEach(g => removeFurniture(g));
+      if (_refreshStep4) _refreshStep4();
     }
   }
   if (e.key === 'Escape') {
@@ -1015,18 +1017,18 @@ function init(): void {
   let _layoutSchemes: Array<{ schemeId: string; furniture: Array<{ type: string; x: number; y: number; rotation: number }> }> = [];
 
   function generateLayoutSchemes(): void {
-    // Scheme A: wall-hugging (existing algorithm)
+    // Scheme A: wall-hugging (standard order)
+    const resultsA = runSmartLayout(state.wallPoints, state.furnitureItems);
     const schemeA = state.furnitureItems.map((item, i) => {
-      const results = runSmartLayout(state.wallPoints, state.furnitureItems);
-      const r = results[i] || { x: item.x, y: item.y };
+      const r = resultsA[i] || { x: item.x, y: item.y };
       return { type: item.type, x: r.x, y: r.y, rotation: 0 };
     });
-    // Scheme B: same as A but with slight offset for variety
-    const schemeB = schemeA.map(s => ({
-      ...s,
-      x: s.x + 10,
-      y: s.y + 15,
-    }));
+    // Scheme B: partitioned (reverse order, different wall priority)
+    const resultsB = runSmartLayoutB(state.wallPoints, state.furnitureItems);
+    const schemeB = state.furnitureItems.map((item, i) => {
+      const r = resultsB[i] || { x: item.x, y: item.y };
+      return { type: item.type, x: r.x, y: r.y, rotation: 0 };
+    });
     _layoutSchemes = [
       { schemeId: 'A', furniture: schemeA },
       { schemeId: 'B', furniture: schemeB },
@@ -1172,6 +1174,7 @@ function init(): void {
   };
 
   renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
+  _refreshStep4 = () => renderStep4Panel(document.getElementById('panel-adjust')!, step4Callbacks);
 
   // 模板浮层事件
   document.querySelectorAll('.template-card').forEach(card => {
@@ -1180,6 +1183,16 @@ function init(): void {
       if (tmpl) loadTemplate(tmpl);
     });
   });
+
+  // "或自定义尺寸" 链接
+  const orCustom = document.querySelector('.template-or-custom');
+  if (orCustom) {
+    orCustom.addEventListener('click', () => {
+      // 聚焦自定义尺寸输入框
+      const wInput = document.getElementById('custom-room-w') as HTMLInputElement | null;
+      if (wInput) wInput.focus();
+    });
+  }
 
   // 导出按钮
   document.getElementById('btn-export')!.addEventListener('click', () => {
